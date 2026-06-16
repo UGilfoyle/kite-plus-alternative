@@ -308,9 +308,11 @@
 }
 
 .kp-basket-tabs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
   background: #1e293b;
-  padding: 3px;
+  padding: 4px;
   border-radius: 6px;
   margin: 12px 20px 0 20px;
 }
@@ -598,4 +600,160 @@
   height: 100%;
   display: block;
   cursor: crosshair;
+}
+
+/* Nested positions grouping */
+.kp-nested-row td:first-child {
+  border-left: 3px solid #3b82f6 !important;
+  padding-left: 12px !important;
+}
+
+.kp-nested-row {
+  background-color: rgba(255, 255, 255, 0.01) !important;
+}
+
+/* Watchlist Inline Option Chain */
+.kp-watchlist-inline-oc {
+  margin-top: 8px;
+  background-color: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 8px 6px;
+  font-size: 11px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.kp-inline-oc-header {
+  display: flex;
+  justify-content: space-between;
+  color: #8b949e;
+  font-weight: 600;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #21262d;
+  margin-bottom: 4px;
+}
+
+.kp-inline-oc-header span {
+  flex: 1;
+  text-align: center;
+}
+
+.kp-inline-oc-header span.strike-title {
+  color: #c9d1d9;
+}
+
+.kp-inline-oc-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.kp-inline-oc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(240, 246, 252, 0.05);
+}
+
+.kp-inline-oc-row:last-child {
+  border-bottom: none;
+}
+
+.kp-inline-oc-col {
+  flex: 1;
+  text-align: center;
+  padding: 4px 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  height: 24px;
+}
+
+.kp-inline-oc-col.strike {
+  font-weight: 700;
+  color: #c9d1d9;
+  background-color: #161b22;
+  border-radius: 3px;
+  padding: 2px;
+}
+
+.kp-inline-oc-col.ce.kp-itm-ce {
+  background-color: rgba(59, 130, 246, 0.08);
+}
+
+.kp-inline-oc-col.pe.kp-itm-pe {
+  background-color: rgba(139, 92, 246, 0.08);
+}
+
+.kp-inline-oc-ltp {
+  color: #c9d1d9;
+  font-weight: 500;
+}
+
+.kp-inline-oc-actions {
+  display: none;
+  gap: 4px;
+}
+
+.kp-inline-oc-col:hover .kp-inline-oc-ltp {
+  display: none;
+}
+
+.kp-inline-oc-col:hover .kp-inline-oc-actions {
+  display: flex;
+}
+
+.kp-inline-btn {
+  padding: 1px 6px;
+  border: none;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: bold;
+  cursor: pointer;
+  color: white;
+}
+
+.kp-inline-btn.buy-btn {
+  background-color: #0052cc;
+}
+
+.kp-inline-btn.sell-btn {
+  background-color: #ff5630;
+}
+
+.kp-inline-oc-footer {
+  margin-top: 6px;
+  text-align: center;
+}
+
+.kp-inline-oc-full-btn {
+  width: 100%;
+  background-color: #21262d;
+  color: #c9d1d9;
+  border: 1px solid #30363d;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.kp-inline-oc-full-btn:hover {
+  background-color: #30363d;
+  color: #ffffff;
+}
+
+.kp-watchlist-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.kp-has-inline-oc {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  padding: 10px 12px 10px 12px !important;
 }

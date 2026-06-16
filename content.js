@@ -62,9 +62,12 @@ function setupSettingsListener() {
   }
 }
 
+let isApplyingChanges = false;
+
 // Watch DOM changes to inject widgets dynamically
 function setupMutationObserver() {
   const observer = new MutationObserver((mutations) => {
+    if (isApplyingChanges) return;
     // Prevent infinite loops by ignoring mutations caused by our own widgets
     const hasExternalMutation = Array.from(mutations).some(m => {
       const target = m.target;
@@ -74,6 +77,7 @@ function setupMutationObserver() {
              !target.closest('.kp-basket-sidebar') && 
              !target.closest('.kp-modal-backdrop') && 
              !target.closest('.kp-group-controls') &&
+             !target.closest('.kp-watchlist-inline-oc') &&
              !target.closest('.kp-charges-box');
     });
     if (hasExternalMutation) {
@@ -85,18 +89,26 @@ function setupMutationObserver() {
 
 // Run all enabled modules
 function runModules() {
+  if (isApplyingChanges) return;
+  isApplyingChanges = true;
   requestAnimationFrame(() => {
-    // Ensure status bar is removed
-    let statusBar = document.querySelector('.kp-status-bar');
-    if (statusBar) {
-      statusBar.remove();
-    }
-    document.body.style.paddingBottom = '0px';
+    try {
+      // Ensure status bar is removed
+      let statusBar = document.querySelector('.kp-status-bar');
+      if (statusBar) {
+        statusBar.remove();
+      }
+      document.body.style.paddingBottom = '0px';
 
-    handlePositionsGrouping();
-    handleWatchlistOptionChain();
-    handleOrderWindowCharges();
-    handleExpressBasketDrawer();
+      handlePositionsGrouping();
+      handleWatchlistOptionChain();
+      handleOrderWindowCharges();
+      handleExpressBasketDrawer();
+    } finally {
+      setTimeout(() => {
+        isApplyingChanges = false;
+      }, 0);
+    }
   });
 }
 
@@ -355,6 +367,7 @@ function getTradesCount() {
    MODULE 2: POSITIONS GROUPING
    ========================================== */
 let groupingMode = 'default'; // 'default', 'instrument', 'expiry'
+let collapsedGroups = {};
 
 // Cache table column mapping to improve performance and robustness
 const tableColumnMaps = new WeakMap();
@@ -533,6 +546,7 @@ function removePositionsGrouping(table) {
   const trs = table.querySelectorAll('tbody tr');
   trs.forEach(tr => {
     tr.style.display = '';
+    tr.classList.remove('kp-nested-row');
   });
 }
 
@@ -546,9 +560,25 @@ function applyPositionsGrouping(table) {
   
   const rows = Array.from(tbody.querySelectorAll('tr:not(.kp-group-header-row)'));
   if (rows.length === 0) return;
+
+  // Store original index for sorting back
+  rows.forEach((row, idx) => {
+    if (!row.hasAttribute('data-original-index')) {
+      row.setAttribute('data-original-index', idx);
+    }
+  });
   
   if (groupingMode === 'default') {
-    rows.forEach(r => r.style.display = '');
+    const sortedRows = rows.sort((a, b) => {
+      const idxA = parseInt(a.getAttribute('data-original-index') || 0);
+      const idxB = parseInt(b.getAttribute('data-original-index') || 0);
+      return idxA - idxB;
+    });
+    sortedRows.forEach(r => {
+      tbody.appendChild(r);
+      r.style.display = '';
+      r.classList.remove('kp-nested-row');
+    });
     return;
   }
   
@@ -567,7 +597,7 @@ function applyPositionsGrouping(table) {
       groupKey = match ? match[1].trim() : name.split(' ')[0];
     } else if (groupingMode === 'expiry') {
       // Group by expiry date in F&O instrument e.g. NIFTY 26 JUN 18000 CE -> 26 JUN
-      const match = name.match(/\d{2}\s[A-Z]{3}/i);
+      const match = name.match(/(\d{2}\s*[A-Z]{3}(?:\s*\d{2})?)/i);
       groupKey = match ? match[0].toUpperCase() : 'Equity / Long Term';
     }
     
@@ -620,11 +650,31 @@ function applyPositionsGrouping(table) {
     
     // Append Header Row
     tbody.appendChild(headerRow);
+
+    const stateKey = `${groupingMode}-${key}`;
+    let isCollapsed = !!collapsedGroups[stateKey];
+    
+    const icon = headerRow.querySelector('.kp-group-toggle-icon');
+    if (isCollapsed) {
+      icon.classList.add('collapsed');
+      groupRowsInfo.forEach(item => {
+        tbody.appendChild(item.row);
+        item.row.classList.add('kp-nested-row');
+        item.row.style.display = 'none';
+      });
+    } else {
+      icon.classList.remove('collapsed');
+      groupRowsInfo.forEach(item => {
+        tbody.appendChild(item.row);
+        item.row.classList.add('kp-nested-row');
+        item.row.style.display = '';
+      });
+    }
     
     // Toggle functionality
-    let isCollapsed = false;
     headerRow.addEventListener('click', () => {
       isCollapsed = !isCollapsed;
+      collapsedGroups[stateKey] = isCollapsed;
       const icon = headerRow.querySelector('.kp-group-toggle-icon');
       if (isCollapsed) {
         icon.classList.add('collapsed');
@@ -634,13 +684,9 @@ function applyPositionsGrouping(table) {
         groupRowsInfo.forEach(item => item.row.style.display = '');
       }
     });
-    
-    // Initially expanded
-    groupRowsInfo.forEach(item => item.row.style.display = '');
   });
 }
 
-// Re-aggregate and update positions grouping badges dynamically
 function updatePositionsGroupingValues(table) {
   if (groupingMode === 'default') return;
   const tbody = table.querySelector('tbody');
@@ -663,7 +709,7 @@ function updatePositionsGroupingValues(table) {
       const match = name.match(/^([A-Z\s]+)(?:\d{2}|[A-Z]{3})/);
       groupKey = match ? match[1].trim() : name.split(' ')[0];
     } else if (groupingMode === 'expiry') {
-      const match = name.match(/\d{2}\s[A-Z]{3}/i);
+      const match = name.match(/(\d{2}\s*[A-Z]{3}(?:\s*\d{2})?)/i);
       groupKey = match ? match[0].toUpperCase() : 'Equity / Long Term';
     }
     
@@ -697,10 +743,6 @@ function updatePositionsGroupingValues(table) {
   });
 }
 
-
-/* ==========================================
-   MODULE 3: WATCHLIST OPTION CHAIN BUTTONS
-   ========================================== */
 function handleWatchlistOptionChain() {
   const watchlistItems = document.querySelectorAll(
     '.marketwatch-sidebar .instruments > div, ' +
@@ -726,17 +768,141 @@ function handleWatchlistOptionChain() {
       const ocBtn = document.createElement('button');
       ocBtn.className = 'button button-outline kp-watchlist-oc-btn';
       ocBtn.innerText = 'Option Chain';
-      ocBtn.title = 'Open KitePlus Option Chain';
+      ocBtn.title = 'Toggle Watchlist Option Chain';
       
       // Prevent default watchlist clicks
       ocBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
-        openOptionChainModal(name);
+        toggleInlineOptionChain(item, name);
       });
       
       actions.appendChild(ocBtn);
     }
+  });
+}
+
+function toggleInlineOptionChain(item, name) {
+  let inlineOc = item.querySelector('.kp-watchlist-inline-oc');
+  if (inlineOc) {
+    inlineOc.remove();
+    item.classList.remove('kp-has-inline-oc');
+    const topWrap = item.querySelector('.kp-watchlist-item-top');
+    if (topWrap) {
+      while (topWrap.firstChild) {
+        item.insertBefore(topWrap.firstChild, topWrap);
+      }
+      topWrap.remove();
+    }
+  } else {
+    item.classList.add('kp-has-inline-oc');
+    const topWrap = document.createElement('div');
+    topWrap.className = 'kp-watchlist-item-top';
+    while (item.firstChild) {
+      topWrap.appendChild(item.firstChild);
+    }
+    item.appendChild(topWrap);
+    
+    inlineOc = document.createElement('div');
+    inlineOc.className = 'kp-watchlist-inline-oc';
+    item.appendChild(inlineOc);
+    
+    populateInlineOptionChain(inlineOc, name);
+  }
+}
+
+function populateInlineOptionChain(container, symbol) {
+  let spotPrice = 22000;
+  let strikeGap = 100;
+  if (symbol.includes('BANKNIFTY')) {
+    spotPrice = 48000;
+    strikeGap = 100;
+  } else if (symbol.includes('FINNIFTY')) {
+    spotPrice = 21500;
+    strikeGap = 50;
+  } else if (symbol.includes('NIFTY')) {
+    spotPrice = 22400;
+    strikeGap = 50;
+  }
+  
+  const strikes = [];
+  const atmStrike = Math.round(spotPrice / strikeGap) * strikeGap;
+  for (let i = -2; i <= 2; i++) {
+    strikes.push(atmStrike + (i * strikeGap));
+  }
+  
+  container.innerHTML = `
+    <div class="kp-inline-oc-header">
+      <span>Call (CE)</span>
+      <span class="strike-title">Strike</span>
+      <span>Put (PE)</span>
+    </div>
+    <div class="kp-inline-oc-rows"></div>
+    <div class="kp-inline-oc-footer">
+      <button class="kp-inline-oc-full-btn">Open Full Option Chain</button>
+    </div>
+  `;
+  
+  const rowsContainer = container.querySelector('.kp-inline-oc-rows');
+  
+  strikes.forEach(strike => {
+    const isITM_CE = strike < spotPrice;
+    const isITM_PE = strike > spotPrice;
+    
+    const distance = Math.abs(strike - spotPrice);
+    let ceLTP = Math.max(5.00, (300 - (strike - spotPrice) * 0.6) + Math.random() * 5);
+    let peLTP = Math.max(5.00, (300 + (strike - spotPrice) * 0.6) + Math.random() * 5);
+    
+    if (strike > spotPrice) {
+      ceLTP = Math.max(2.00, 200 * Math.exp(-distance/200) + Math.random() * 3);
+    } else {
+      peLTP = Math.max(2.00, 200 * Math.exp(-distance/200) + Math.random() * 3);
+    }
+    
+    const ceClass = isITM_CE ? 'kp-itm-ce' : '';
+    const peClass = isITM_PE ? 'kp-itm-pe' : '';
+    
+    const rowEl = document.createElement('div');
+    rowEl.className = 'kp-inline-oc-row';
+    
+    rowEl.innerHTML = `
+      <div class="kp-inline-oc-col ce ${ceClass}">
+        <span class="kp-inline-oc-ltp">₹${ceLTP.toFixed(2)}</span>
+        <div class="kp-inline-oc-actions">
+          <button class="kp-inline-btn buy-btn" data-action="BUY" data-type="CE" data-price="${ceLTP.toFixed(2)}">B</button>
+          <button class="kp-inline-btn sell-btn" data-action="SELL" data-type="CE" data-price="${ceLTP.toFixed(2)}">S</button>
+        </div>
+      </div>
+      <div class="kp-inline-oc-col strike">${strike}</div>
+      <div class="kp-inline-oc-col pe ${peClass}">
+        <span class="kp-inline-oc-ltp">₹${peLTP.toFixed(2)}</span>
+        <div class="kp-inline-oc-actions">
+          <button class="kp-inline-btn buy-btn" data-action="BUY" data-type="PE" data-price="${peLTP.toFixed(2)}">B</button>
+          <button class="kp-inline-btn sell-btn" data-action="SELL" data-type="PE" data-price="${peLTP.toFixed(2)}">S</button>
+        </div>
+      </div>
+    `;
+    
+    rowsContainer.appendChild(rowEl);
+  });
+  
+  container.querySelectorAll('.kp-inline-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const type = btn.getAttribute('data-type');
+      const action = btn.getAttribute('data-action');
+      const strikeVal = btn.parentElement.parentElement.parentElement.querySelector('.strike').innerText;
+      const price = parseFloat(btn.getAttribute('data-price'));
+      
+      const legName = `${symbol} ${strikeVal} ${type}`;
+      addLegToBasket(legName, action, price);
+      openBasketSidebar();
+    });
+  });
+  
+  container.querySelector('.kp-inline-oc-full-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    openOptionChainModal(symbol);
   });
 }
 
@@ -1046,6 +1212,10 @@ function renderBasketSidebar(sidebar) {
       <button class="kp-basket-tab ${activeBasketTab === 2 ? 'active' : ''}" data-tab="2">Basket 2</button>
       <button class="kp-basket-tab ${activeBasketTab === 3 ? 'active' : ''}" data-tab="3">Basket 3</button>
       <button class="kp-basket-tab ${activeBasketTab === 4 ? 'active' : ''}" data-tab="4">Basket 4</button>
+      <button class="kp-basket-tab ${activeBasketTab === 5 ? 'active' : ''}" data-tab="5">Basket 5</button>
+      <button class="kp-basket-tab ${activeBasketTab === 6 ? 'active' : ''}" data-tab="6">Basket 6</button>
+      <button class="kp-basket-tab ${activeBasketTab === 7 ? 'active' : ''}" data-tab="7">Basket 7</button>
+      <button class="kp-basket-tab ${activeBasketTab === 8 ? 'active' : ''}" data-tab="8">Basket 8</button>
     </div>
     <div class="kp-basket-body" id="kp-basket-legs-container">
       <!-- Legs list -->
