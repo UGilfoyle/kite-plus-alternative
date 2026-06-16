@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KitePlus Control Panel</title>
+  <link rel="stylesheet" href="popup.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="logo-area">
+        <svg class="logo-icon" viewBox="0 0 100 100" width="28" height="28">
+          <defs>
+            <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#3b82f6" />
+              <stop offset="100%" stop-color="#8b5cf6" />
+            </linearGradient>
+          </defs>
+          <polygon points="45,15 65,35 45,55 25,35" fill="url(#logo-grad)" />
+          <line x1="45" y1="55" x2="35" y2="70" stroke="white" stroke-width="3" stroke-linecap="round" />
+          <circle cx="45" cy="50" r="3" fill="#f43f5e" />
+          <line x1="67" y1="18" x2="67" y2="34" stroke="white" stroke-width="3" stroke-linecap="round" />
+          <line x1="59" y1="26" x2="75" y2="26" stroke="white" stroke-width="3" stroke-linecap="round" />
+        </svg>
+        <span class="logo-text">Kite<span class="highlight">Plus</span></span>
+      </div>
+      <span class="version-tag">v1.0.0</span>
+    </header>
+
+    <!-- Sandbox Button -->
+    <div class="sandbox-banner">
+      <div class="sandbox-info">
+        <h3>Practice Trading Sandbox</h3>
+        <p>Test all KitePlus features in a fully simulated Zerodha Kite environment.</p>
+      </div>
+      <button id="open-sandbox" class="btn btn-primary">Open Sandbox Demo</button>
+    </div>
+
+    <!-- Features Section -->
+    <section class="features">
+      <h2>Active Features</h2>
+      
+
+
+      <div class="feature-card">
+        <div class="feature-info">
+          <span class="feature-title">Positions Grouping</span>
+          <span class="feature-desc">Group active trades by instrument/expiry with nested P&L.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-grouping" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-info">
+          <span class="feature-title">Express Basket orders</span>
+          <span class="feature-desc">Build & execute up to 8 F&O leg baskets simultaneously.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-basket" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-info">
+          <span class="feature-title">Option Chain Overlay</span>
+          <span class="feature-desc">Interactive option chain directly inside your watchlists.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-optionchain" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-info">
+          <span class="feature-title">Real-time Charges Calculator</span>
+          <span class="feature-desc">Track GST, STT, and brokerages dynamically per trade.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-charges" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+      <div class="status-indicator">
+        <span class="pulse-dot"></span>
+        <span>Running on kite.zerodha.com</span>
+      </div>
+      <a href="#" id="reset-settings" class="reset-link">Reset Defaults</a>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

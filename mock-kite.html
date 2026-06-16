@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kite - Zerodha's web trading platform (Simulated)</title>
+  <link rel="stylesheet" href="mock-kite.css">
+  <link rel="stylesheet" href="content.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Left Marketwatch Watchlist -->
+    <aside class="marketwatch-sidebar">
+      <div class="search-box">
+        <input type="text" placeholder="Search eg: infy, nifty futures, gold..." id="watchlist-search">
+        <span class="search-count" id="search-count">7/7</span>
+      </div>
+      
+      <!-- Watchlist list -->
+      <ul class="instruments" id="watchlist-instruments">
+        <!-- Dynamically populated -->
+      </ul>
+
+      <!-- Watchlist selector footer tabs -->
+      <div class="watchlist-tabs">
+        <button class="tab-btn active">1</button>
+        <button class="tab-btn">2</button>
+        <button class="tab-btn">3</button>
+        <button class="tab-btn">4</button>
+        <button class="tab-btn">5</button>
+      </div>
+    </aside>
+
+    <!-- Right Content Area -->
+    <main class="main-container">
+      <!-- Top Header Navigation -->
+      <header class="app-header">
+        <div class="indices-summary">
+          <div class="index-box">
+            <span class="index-name">NIFTY 50</span>
+            <span class="index-value" id="nifty-value">22,410.20</span>
+            <span class="index-change positive" id="nifty-change">+45.50 (+0.20%)</span>
+          </div>
+          <div class="index-box">
+            <span class="index-name">SENSEX</span>
+            <span class="index-value" id="sensex-value">73,895.50</span>
+            <span class="index-change positive" id="sensex-change">+132.80 (+0.18%)</span>
+          </div>
+        </div>
+        
+        <nav class="nav-links">
+          <a href="#" class="nav-item active" data-page="dashboard">Dashboard</a>
+          <a href="#" class="nav-item" data-page="orders">Orders <span class="badge" id="pending-badge">0</span></a>
+          <a href="#" class="nav-item" data-page="holdings">Holdings</a>
+          <a href="#" class="nav-item" data-page="positions">Positions</a>
+          <a href="#" class="nav-item" data-page="funds">Funds</a>
+        </nav>
+        
+        <div class="user-menu">
+          <div class="avatar">AK</div>
+          <span class="user-id">AK1234</span>
+        </div>
+      </header>
+
+      <!-- Pages Content Wrapper -->
+      <div class="page-content">
+        
+        <!-- DASHBOARD PAGE -->
+        <section id="page-dashboard" class="page-section active">
+          <h2 class="welcome-title">Hi, Akash Kaintura</h2>
+          <div class="dashboard-grid">
+            <div class="dashboard-card equity-card">
+              <h3>Equity</h3>
+              <div class="metric-row">
+                <div>
+                  <span class="lbl">Margin available</span>
+                  <span class="val" id="dash-margin">₹5,00,000.00</span>
+                </div>
+              </div>
+              <div class="metric-summary">
+                <span class="lbl">Used margin</span>
+                <span class="val text-orange" id="dash-used-margin">₹0.00</span>
+              </div>
+            </div>
+            
+            <div class="dashboard-card holding-summary-card">
+              <h3>Holdings</h3>
+              <div class="metric-row">
+                <div>
+                  <span class="lbl">Current value</span>
+                  <span class="val">₹12,45,210.00</span>
+                </div>
+                <div>
+                  <span class="lbl">Investment</span>
+                  <span class="val text-muted">₹10,50,000.00</span>
+                </div>
+              </div>
+              <div class="metric-summary">
+                <span class="lbl">P&L</span>
+                <span class="val text-green">+₹1,95,210.00 (+18.59%)</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ORDERS PAGE -->
+        <section id="page-orders" class="page-section">
+          <div class="section-header">
+            <h3>Orders</h3>
+          </div>
+          <div class="table-container orders-container">
+            <table class="orders-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Instrument</th>
+                  <th>Product</th>
+                  <th>Qty</th>
+                  <th>Price</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="orders-tbody">
+                <tr>
+                  <td colspan="7" class="empty-state">No orders placed today.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- HOLDINGS PAGE -->
+        <section id="page-holdings" class="page-section">
+          <div class="section-header">
+            <h3>Holdings (3)</h3>
+          </div>
+          <div class="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Instrument</th>
+                  <th>Qty.</th>
+                  <th>Avg. Cost</th>
+                  <th>LTP</th>
+                  <th>Cur. Value</th>
+                  <th>P&L</th>
+                  <th>Chg.</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>RELIANCE</strong></td>
+                  <td>100</td>
+                  <td>2,450.00</td>
+                  <td class="tick-price" data-symbol="RELIANCE">2,910.50</td>
+                  <td>2,91,050.00</td>
+                  <td class="text-green">+46,050.00</td>
+                  <td class="text-green">+18.80%</td>
+                </tr>
+                <tr>
+                  <td><strong>TCS</strong></td>
+                  <td>50</td>
+                  <td>3,800.00</td>
+                  <td class="tick-price" data-symbol="TCS">3,850.20</td>
+                  <td>1,92,510.00</td>
+                  <td class="text-green">+2,510.00</td>
+                  <td class="text-green">+1.32%</td>
+                </tr>
+                <tr>
+                  <td><strong>HDFCBANK</strong></td>
+                  <td>300</td>
+                  <td>1,550.00</td>
+                  <td class="tick-price" data-symbol="HDFCBANK">1,495.00</td>
+                  <td>4,48,500.00</td>
+                  <td class="text-red">-16,500.00</td>
+                  <td class="text-red">-3.55%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- POSITIONS PAGE -->
+        <section id="page-positions" class="page-section">
+          <div class="section-header">
+            <h3>Positions</h3>
+          </div>
+          
+          <div class="positions positions-container table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th>Instrument</th>
+                  <th>Qty.</th>
+                  <th>Avg. Price</th>
+                  <th>LTP</th>
+                  <th>P&L</th>
+                </tr>
+              </thead>
+              <tbody id="positions-tbody">
+                <!-- Injected via JavaScript -->
+              </tbody>
+              <tfoot>
+                <tr class="total">
+                  <td colspan="5">Total P&L</td>
+                  <td class="total-pnl" id="total-pnl">₹0.00</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </section>
+
+        <!-- FUNDS PAGE -->
+        <section id="page-funds" class="page-section">
+          <div class="section-header">
+            <h3>Funds</h3>
+          </div>
+          <div class="funds dashboard-grid">
+            <div class="dashboard-card equity-card">
+              <h3>Equity Margin</h3>
+              <div class="funds-table">
+                <div class="row">
+                  <span class="lbl">Available margin</span>
+                  <span class="val bold text-green" id="available-margin">₹5,00,000.00</span>
+                </div>
+                <div class="row">
+                  <span class="lbl">Used margin</span>
+                  <span class="val text-orange" id="used-margin">₹0.00</span>
+                </div>
+                <div class="row">
+                  <span class="lbl">Opening Balance</span>
+                  <span class="val">₹5,00,000.00</span>
+                </div>
+                <div class="row">
+                  <span class="lbl">Payin</span>
+                  <span class="val">₹0.00</span>
+                </div>
+              </div>
+            </div>
+            
+            <div class="dashboard-card equity-card">
+              <h3>Commodity Margin</h3>
+              <div class="funds-table">
+                <div class="row">
+                  <span class="lbl">Available margin</span>
+                  <span class="val bold">₹0.00</span>
+                </div>
+                <div class="row">
+                  <span class="lbl">Used margin</span>
+                  <span class="val">₹0.00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Injected Order Window Modal -->
+  <div class="modal-wrapper" id="order-window-modal">
+    <div class="order-window buy" id="order-window-form">
+      <div class="order-header">
+        <div class="title-details">
+          <span class="action-tag" id="order-action-label">BUY</span>
+          <span class="instrument-name" id="order-instrument-name">NIFTY 26 JUN 18000 CE</span>
+          <span class="exchange-tag">NFO</span>
+        </div>
+        <button class="close-btn" id="close-order-modal">&times;</button>
+      </div>
+      
+      <div class="order-body">
+        <div class="product-selection">
+          <label class="radio-label">
+            <input type="radio" name="product" value="MIS" checked>
+            <span>Intraday (MIS)</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="product" value="NRML">
+            <span>Overnight (NRML)</span>
+          </label>
+        </div>
+        
+        <div class="input-grid">
+          <div class="input-group">
+            <label>Qty</label>
+            <input type="number" name="quantity" id="order-qty" value="75" min="1">
+          </div>
+          <div class="input-group">
+            <label>Price</label>
+            <input type="number" step="0.05" name="price" id="order-price" value="100.50">
+          </div>
+        </div>
+
+        <div class="order-type-selection">
+          <label class="radio-label">
+            <input type="radio" name="ordertype" value="MARKET">
+            <span>Market</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="ordertype" value="LIMIT" checked>
+            <span>Limit</span>
+          </label>
+        </div>
+      </div>
+      
+      <div class="actions-row">
+        <div class="margin-est">
+          <span class="lbl">Margin required</span>
+          <span class="val" id="order-margin-est">₹7,537.50</span>
+        </div>
+        <button class="btn btn-blue" id="submit-order-btn">BUY</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Simulator Logic and content scripts -->
+  <script src="mock-kite.js"></script>
+  <script src="content.js"></script>
+</body>
+</html>

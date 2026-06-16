@@ -1,0 +1,12 @@
+# System Files
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+.idea/
+
+# Caches
+*.pyc
+__pycache__/
+node_modules/
+package-lock.json
