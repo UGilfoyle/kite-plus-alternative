@@ -20,6 +20,7 @@ let mtmHistory = [];
 async function init() {
   await loadSettings();
   await loadMtmHistory();
+  await loadExecutedCharges();
   setupMutationObserver();
   setupSettingsListener();
   
@@ -112,6 +113,211 @@ function runModules() {
   });
 }
 
+// Helper to read cookie value
+function getCookie(name) {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+  return null;
+}
+
+let totalExecutedCharges = 0;
+let executedChargesDate = '';
+
+// Load executed charges from storage on startup
+async function loadExecutedCharges() {
+  const todayStr = new Date().toDateString();
+  try {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      const res = await chrome.storage.local.get(['totalExecutedCharges', 'executedChargesDate']);
+      if (res.executedChargesDate === todayStr) {
+        totalExecutedCharges = res.totalExecutedCharges || 0;
+        executedChargesDate = res.executedChargesDate;
+        if (DEBUG) console.log(`[KitePlus Debug] Loaded executed charges from storage: ₹${totalExecutedCharges}`);
+      } else {
+        totalExecutedCharges = 0;
+        executedChargesDate = todayStr;
+        await chrome.storage.local.set({ totalExecutedCharges: 0, executedChargesDate: todayStr });
+      }
+    } else {
+      const cachedDate = localStorage.getItem('kp_executed_charges_date');
+      if (cachedDate === todayStr) {
+        totalExecutedCharges = parseFloat(localStorage.getItem('kp_executed_charges')) || 0;
+        executedChargesDate = cachedDate;
+      } else {
+        totalExecutedCharges = 0;
+        executedChargesDate = todayStr;
+      }
+    }
+  } catch (err) {
+    if (DEBUG) console.error('[KitePlus Debug] Error loading executed charges:', err);
+  }
+}
+
+function saveExecutedCharges(val) {
+  totalExecutedCharges = val;
+  const todayStr = new Date().toDateString();
+  executedChargesDate = todayStr;
+  
+  if (typeof chrome !== 'undefined' && chrome.storage) {
+    chrome.storage.local.set({ 
+      totalExecutedCharges: val, 
+      executedChargesDate: todayStr 
+    });
+  } else {
+    try {
+      localStorage.setItem('kp_executed_charges', val);
+      localStorage.setItem('kp_executed_charges_date', todayStr);
+    } catch (e) {}
+  }
+}
+
+// Backup DOM Scraper for Virtual Contract Note
+function scrapeContractNoteFromDOM() {
+  const allElements = document.querySelectorAll('h3, h4, .title, div, span');
+  let headerEl = null;
+  for (const el of allElements) {
+    if (el.innerText && el.innerText.trim() === 'Virtual contract note') {
+      headerEl = el;
+      break;
+    }
+  }
+  if (!headerEl) {
+    for (const el of allElements) {
+      if (el.innerText && el.innerText.includes('Virtual contract note')) {
+        headerEl = el;
+        break;
+      }
+    }
+  }
+  
+  if (!headerEl) return false;
+
+  let container = headerEl.parentElement;
+  while (container && container !== document.body) {
+    if (container.classList.contains('modal-wrapper') || 
+        container.classList.contains('modal') || 
+        container.classList.contains('modal-dialog') || 
+        container.classList.contains('modal-content') ||
+        container.querySelector('table') ||
+        container.querySelector('.table')) {
+      break;
+    }
+    container = container.parentElement;
+  }
+  if (!container) container = document.body;
+
+  const cells = Array.from(container.querySelectorAll('td, span, div, p, th'));
+  for (let i = 0; i < cells.length; i++) {
+    const text = cells[i].innerText ? cells[i].innerText.trim() : '';
+    if (text === 'Total') {
+      const row = cells[i].closest('tr, .row, div');
+      if (row && row !== container) {
+        const rowCells = Array.from(row.querySelectorAll('td, span, div'));
+        for (let j = rowCells.length - 1; j >= 0; j--) {
+          const valText = rowCells[j].innerText ? rowCells[j].innerText.trim() : '';
+          const val = parseFloat(valText.replace(/[^0-9.-]/g, ''));
+          if (!isNaN(val) && val > 0) {
+            saveExecutedCharges(val);
+            if (DEBUG) console.log(`[KitePlus Debug] Scraped Contract Note Total from DOM: ₹${totalExecutedCharges}`);
+            return true;
+          }
+        }
+      }
+      
+      let sibling = cells[i].nextElementSibling;
+      while (sibling) {
+        const valText = sibling.innerText ? sibling.innerText.trim() : '';
+        const val = parseFloat(valText.replace(/[^0-9.-]/g, ''));
+        if (!isNaN(val) && val > 0) {
+          saveExecutedCharges(val);
+          if (DEBUG) console.log(`[KitePlus Debug] Scraped Contract Note Total from DOM Sibling: ₹${totalExecutedCharges}`);
+          return true;
+        }
+        sibling = sibling.nextElementSibling;
+      }
+    }
+  }
+  return false;
+}
+
+// Dynamic executed charges tracking
+let lastApiOrdersFetch = 0;
+
+async function updateExecutedCharges() {
+  if (scrapeContractNoteFromDOM()) {
+    return;
+  }
+
+  const isMock = window.location.href.includes('mock-kite.html') || document.getElementById('mock-kite-dashboard') !== null;
+  
+  if (isMock) {
+    if (window.mockState && window.mockState.orders) {
+      let sumCharges = 0;
+      window.mockState.orders.forEach(order => {
+        if (order.status === 'EXECUTED') {
+          const qty = order.qty || 1;
+          const price = order.price || 0;
+          const isSell = order.action === 'SELL';
+          const symbol = order.symbol || '';
+          
+          const isFO = symbol.includes('NIFTY') || symbol.includes('BANK') || symbol.includes('FINNIFTY') || symbol.includes('-FUT') || symbol.includes('-CE') || symbol.includes('-PE');
+          const isOption = symbol.includes('CE') || symbol.includes('PE');
+          
+          const chg = calculateSingleLegCharges(qty, price, isSell, isFO, isOption);
+          sumCharges += chg.total;
+        }
+      });
+      saveExecutedCharges(sumCharges);
+    }
+    return;
+  }
+  
+  const now = Date.now();
+  if (now - lastApiOrdersFetch < 5000) {
+    return;
+  }
+  
+  try {
+    const headers = {};
+    const token = getCookie('enctoken');
+    if (token) {
+      headers['Authorization'] = `enctoken ${token}`;
+    }
+    
+    const response = await fetch('/oms/orders', { headers });
+    if (response.ok) {
+      const json = await response.json();
+      if (json && json.status === 'success' && Array.isArray(json.data)) {
+        let sumCharges = 0;
+        json.data.forEach(order => {
+          if (order.status === 'COMPLETE') {
+            const qty = parseInt(order.quantity) || 0;
+            const price = parseFloat(order.average_price) || 0;
+            const isSell = order.transaction_type === 'SELL';
+            const symbol = order.tradingsymbol || '';
+            const exchange = order.exchange || '';
+            
+            const isFO = exchange === 'NFO' || exchange === 'BFO' || exchange === 'MCX' || exchange === 'CDS' || exchange.includes('FO') ||
+                         symbol.includes('-FUT') || symbol.includes('-CE') || symbol.includes('-PE');
+            const isOption = symbol.endsWith('CE') || symbol.endsWith('PE') || 
+                             symbol.includes('-CE') || symbol.includes('-PE') ||
+                             (isFO && (symbol.includes('CE') || symbol.includes('PE')));
+            
+            const chg = calculateSingleLegCharges(qty, price, isSell, isFO, isOption);
+            sumCharges += chg.total;
+          }
+        });
+        saveExecutedCharges(sumCharges);
+        lastApiOrdersFetch = now;
+        if (DEBUG) console.log(`[KitePlus Debug] API Orders fetch charges sum: ₹${totalExecutedCharges}`);
+      }
+    }
+  } catch (err) {
+    if (DEBUG) console.error(`[KitePlus Debug] Error fetching orders:`, err);
+  }
+}
+
 // Update the numerical values inside the MTM Chart header
 function updateChartHeaderMetrics() {
   const margin = getAvailableMargin();
@@ -124,19 +330,31 @@ function updateChartHeaderMetrics() {
   const pnlClass = pnl >= 0 ? 'profit' : 'loss';
   const pnlSign = pnl >= 0 ? '+' : '-';
   
+  const netPnl = pnl - totalExecutedCharges;
+  const netPnlPercent = (netPnl / totalCapital) * 100;
+  const netPnlClass = netPnl >= 0 ? 'profit' : 'loss';
+  const netPnlSign = netPnl >= 0 ? '+' : '-';
+  
   if (DEBUG) {
-    console.log(`[KitePlus Debug] updateChartHeaderMetrics: margin=${margin}, used=${used}, pnl=${pnl}`);
+    console.log(`[KitePlus Debug] updateChartHeaderMetrics: margin=${margin}, used=${used}, pnl=${pnl}, netPnl=${netPnl}`);
   }
   
   const pnlEl = document.getElementById('kp-chart-pnl');
   if (pnlEl) {
-    pnlEl.innerText = `${pnlSign}₹${formatCurrency(Math.abs(pnl))} (${pnlSign}${Math.abs(pnlPercent).toFixed(2)}%)`;
-    pnlEl.className = pnlClass;
+    pnlEl.innerHTML = `
+      <span style="margin-right: 8px;">Gross MTM: <span class="${pnlClass}">${pnlSign}₹${formatCurrency(Math.abs(pnl))}</span></span>
+      <span style="margin-right: 8px;">Net MTM: <span class="${netPnlClass}">${netPnlSign}₹${formatCurrency(Math.abs(netPnl))} (${netPnlSign}${Math.abs(netPnlPercent).toFixed(2)}%)</span></span>
+      <span style="color:#64748b; font-size:10.5px;">(Charges: ₹${formatCurrency(totalExecutedCharges)})</span>
+    `;
+    pnlEl.className = '';
   }
 }
 
 // Real-time Dynamic updates loop
 function updateDynamicValues() {
+  // Trigger async update of executed charges
+  updateExecutedCharges();
+  
   // Always update metrics in the chart header
   updateChartHeaderMetrics();
   
@@ -1068,6 +1286,80 @@ function populateOptionChainData(symbol) {
 /* ==========================================
    MODULE 4: REAL-TIME CHARGES CALCULATOR
    ========================================== */
+function calculateSingleLegCharges(qty, price, isSell, isFO, isOption) {
+  const txnVal = qty * price;
+  
+  let brokerage = 0;
+  let stt = 0;
+  let exchangeTxn = 0;
+  let gst = 0;
+  let sebi = 0;
+  let stamp = 0;
+  
+  if (isFO) {
+    if (isOption) {
+      brokerage = 20; // flat
+      stt = isSell ? (txnVal * 0.0015) : 0; // 0.15% on option sell (April 1, 2026 update)
+      exchangeTxn = txnVal * 0.0003503; // 0.03503% NSE option transaction charge
+    } else {
+      // Future
+      brokerage = Math.min(20, txnVal * 0.0003);
+      stt = isSell ? (txnVal * 0.0005) : 0; // 0.05% on futures sell (April 1, 2026 update)
+      exchangeTxn = txnVal * 0.0000173; // 0.00173% NSE futures transaction charge
+    }
+  } else {
+    // Equity Intraday
+    brokerage = Math.min(20, txnVal * 0.0003);
+    stt = isSell ? (txnVal * 0.00025) : 0; // 0.025% on intraday sell
+    exchangeTxn = txnVal * 0.0000297; // 0.00297% NSE intraday transaction charge
+  }
+  
+  sebi = txnVal * 0.000001; // 0.0001% (₹10 / crore)
+  gst = (brokerage + exchangeTxn + sebi) * 0.18; // GST on brokerage + exchange txn fee + sebi charges
+  
+  // Stamp duty (only on BUY)
+  if (!isSell) {
+    if (isFO) {
+      if (isOption) {
+        stamp = txnVal * 0.00003; // 0.003% options
+      } else {
+        stamp = txnVal * 0.00002; // 0.002% futures
+      }
+    } else {
+      stamp = txnVal * 0.00003; // 0.003% intraday
+    }
+  }
+  
+  const total = brokerage + stt + exchangeTxn + gst + sebi + stamp;
+  return { brokerage, stt, exchangeTxn, gst, sebi, stamp, total };
+}
+
+function getDefaultTargets(price, isSell, isFO, isOption) {
+  let targetPct = 0.02; // 2% default
+  let slPct = 0.01;     // 1% default
+  
+  if (isFO && isOption) {
+    targetPct = 0.20; // 20% default for options
+    slPct = 0.10;     // 10% default for options
+  }
+  
+  let targetPrice, slPrice;
+  if (!isSell) {
+    // BUY order: target is higher, stop loss is lower
+    targetPrice = price * (1 + targetPct);
+    slPrice = price * (1 - slPct);
+  } else {
+    // SELL order: target is lower (buy back cheaper), stop loss is higher (buy back more expensive)
+    targetPrice = price * (1 - targetPct);
+    slPrice = price * (1 + slPct);
+  }
+  
+  return {
+    targetPrice: parseFloat(targetPrice.toFixed(2)),
+    slPrice: parseFloat(slPrice.toFixed(2))
+  };
+}
+
 function handleOrderWindowCharges() {
   const orderWindow = document.querySelector('.order-window, .modal-wrapper.order, .modal-wrapper .order-window-container');
   if (!orderWindow) return;
@@ -1094,10 +1386,21 @@ function handleOrderWindowCharges() {
   const priceInput = orderWindow.querySelector('input[type="number"][name="price"], input[label="Price"], .price input');
   const isSell = orderWindow.classList.contains('sell') || orderWindow.querySelector('.btn-red, .sell-btn') !== null;
   
+  // Bind live inputs listeners for quantity and price if not already bound
+  if (qtyInput && !qtyInput.dataset.kpListener) {
+    qtyInput.dataset.kpListener = 'true';
+    qtyInput.addEventListener('input', () => handleOrderWindowCharges());
+  }
+  if (priceInput && !priceInput.dataset.kpListener) {
+    priceInput.dataset.kpListener = 'true';
+    priceInput.addEventListener('input', () => handleOrderWindowCharges());
+  }
+  
   // Identify instrument type (Equity delivery, intraday, F&O)
   const titleEl = orderWindow.querySelector('.instrument-name, .title span');
   const symbol = titleEl ? titleEl.innerText : 'NIFTY';
   const isFO = symbol.includes('-FUT') || symbol.includes('-CE') || symbol.includes('-PE') || symbol.includes('NIFTY') || symbol.includes('BANKNIFTY');
+  const isOption = symbol.includes('-CE') || symbol.includes('-PE') || symbol.includes('CE') || symbol.includes('PE');
   
   let qty = qtyInput ? parseInt(qtyInput.value) : 1;
   let price = priceInput ? parseFloat(priceInput.value) : 100;
@@ -1105,79 +1408,176 @@ function handleOrderWindowCharges() {
   if (isNaN(qty) || qty <= 0) qty = 1;
   if (isNaN(price) || price <= 0) price = 100;
   
-  const txnVal = qty * price;
+  // Check if we need to initialize or re-initialize the structure
+  const lastSymbol = chargesBox.getAttribute('data-symbol');
+  const lastIsSell = chargesBox.getAttribute('data-is-sell');
+  const lastPriceStr = chargesBox.getAttribute('data-price');
   
-  // Rates
-  let brokerage = 0;
-  let stt = 0;
-  let exchangeTxn = 0;
-  let gst = 0;
-  let sebi = 0;
-  let stamp = 0;
-  
-  if (isFO) {
-    // F&O Options estimation
-    const isOption = symbol.includes('-CE') || symbol.includes('-PE') || symbol.includes('CE') || symbol.includes('PE');
-    if (isOption) {
-      brokerage = 20; // flat
-      stt = isSell ? (txnVal * 0.000625) : 0; // 0.0625% on sell
-      exchangeTxn = txnVal * 0.00053; // 0.053% NSE option charge
-    } else {
-      // Future
-      brokerage = Math.min(20, txnVal * 0.0003);
-      stt = isSell ? (txnVal * 0.000125) : 0;
-      exchangeTxn = txnVal * 0.00002;
-    }
+  const needsInit = !chargesBox.querySelector('.kp-charges-grid') || 
+                    lastSymbol !== symbol ||
+                    lastIsSell !== String(isSell);
+                    
+  const priceChanged = lastPriceStr !== String(price);
+
+  // Let's get the target and stop loss values
+  let targetPrice = 0;
+  let slPrice = 0;
+
+  if (needsInit || priceChanged) {
+    const defaults = getDefaultTargets(price, isSell, isFO, isOption);
+    targetPrice = defaults.targetPrice;
+    slPrice = defaults.slPrice;
   } else {
-    // Equity Intraday
-    brokerage = Math.min(20, txnVal * 0.0003);
-    stt = isSell ? (txnVal * 0.00025) : 0;
-    exchangeTxn = txnVal * 0.0000345;
+    const targetInput = chargesBox.querySelector('.kp-projection-input.target-price');
+    const slInput = chargesBox.querySelector('.kp-projection-input.stoploss-price');
+    targetPrice = targetInput ? parseFloat(targetInput.value) : 0;
+    slPrice = slInput ? parseFloat(slInput.value) : 0;
+    if (isNaN(targetPrice)) targetPrice = price;
+    if (isNaN(slPrice)) slPrice = price;
   }
-  
-  gst = (brokerage + exchangeTxn) * 0.18;
-  sebi = txnVal * 0.0000001; // 10 / cr
-  
-  // Stamp duty (only on BUY)
-  if (!isSell) {
-    if (isFO) {
-      stamp = txnVal * 0.00002; // 0.002% futures/options
-    } else {
-      stamp = txnVal * 0.00003; // 0.003% intraday
+
+  // Calculate charges for entry and projected exit prices
+  const entryCharges = calculateSingleLegCharges(qty, price, isSell, isFO, isOption);
+  const targetCharges = calculateSingleLegCharges(qty, targetPrice, !isSell, isFO, isOption);
+  const slCharges = calculateSingleLegCharges(qty, slPrice, !isSell, isFO, isOption);
+
+  const breakEvenDiff = (entryCharges.total / qty).toFixed(2);
+
+  // If we need initialization, build the HTML structure
+  if (needsInit) {
+    chargesBox.innerHTML = `
+      <div class="kp-charges-title">
+        <span>KitePlus Real-Time Charges</span>
+        <span style="color:#f43f5e" class="kp-breakeven-pts">Breakeven: +₹${breakEvenDiff} pts</span>
+      </div>
+      <div class="kp-charges-grid">
+        <div class="kp-charge-row">
+          <span class="kp-charge-label">Brokerage:</span>
+          <span class="kp-charge-value kp-brokerage-val">₹${entryCharges.brokerage.toFixed(2)}</span>
+        </div>
+        <div class="kp-charge-row">
+          <span class="kp-charge-label">STT (Tax):</span>
+          <span class="kp-charge-value kp-stt-val">₹${entryCharges.stt.toFixed(2)}</span>
+        </div>
+        <div class="kp-charge-row">
+          <span class="kp-charge-label">NSE Txn Fee:</span>
+          <span class="kp-charge-value kp-txn-val">₹${entryCharges.exchangeTxn.toFixed(2)}</span>
+        </div>
+        <div class="kp-charge-row">
+          <span class="kp-charge-label">GST (18%):</span>
+          <span class="kp-charge-value kp-gst-val">₹${entryCharges.gst.toFixed(2)}</span>
+        </div>
+        <div class="kp-charge-row">
+          <span class="kp-charge-label">SEBI Fee:</span>
+          <span class="kp-charge-value kp-sebi-val">₹${entryCharges.sebi.toFixed(2)}</span>
+        </div>
+        <div class="kp-charge-row">
+          <span class="kp-charge-label">Stamp Duty:</span>
+          <span class="kp-charge-value kp-stamp-val">₹${entryCharges.stamp.toFixed(2)}</span>
+        </div>
+        <div class="kp-charge-row total">
+          <span>Total Est. Charges:</span>
+          <span class="kp-total-charges-val">₹${entryCharges.total.toFixed(2)}</span>
+        </div>
+      </div>
+      
+      <div class="kp-projection-section">
+        <div class="kp-projection-title">P&L Projection (Round-trip)</div>
+        <div class="kp-projection-inputs">
+          <div class="kp-projection-field">
+            <label>Target Price</label>
+            <input type="number" step="0.05" class="kp-projection-input target-price" value="${targetPrice.toFixed(2)}" />
+          </div>
+          <div class="kp-projection-field">
+            <label>Stop Loss Price</label>
+            <input type="number" step="0.05" class="kp-projection-input stoploss-price" value="${slPrice.toFixed(2)}" />
+          </div>
+        </div>
+        <div class="kp-projection-results">
+          <div class="kp-projection-row profit">
+            <span>Net Profit (Target Hit):</span>
+            <span class="kp-net-profit-val">₹0.00</span>
+          </div>
+          <div class="kp-projection-row loss">
+            <span>Net Loss (SL Hit):</span>
+            <span class="kp-net-loss-val">₹0.00</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Save attributes to track state changes
+    chargesBox.setAttribute('data-symbol', symbol);
+    chargesBox.setAttribute('data-is-sell', isSell);
+    chargesBox.setAttribute('data-price', price);
+
+    // Bind event listeners to new inputs
+    const targetInput = chargesBox.querySelector('.kp-projection-input.target-price');
+    const slInput = chargesBox.querySelector('.kp-projection-input.stoploss-price');
+    
+    if (targetInput) targetInput.addEventListener('input', () => handleOrderWindowCharges());
+    if (slInput) slInput.addEventListener('input', () => handleOrderWindowCharges());
+  } else {
+    // If we didn't do full init, but price changed, update the inputs' values
+    const targetInput = chargesBox.querySelector('.kp-projection-input.target-price');
+    const slInput = chargesBox.querySelector('.kp-projection-input.stoploss-price');
+    if (priceChanged) {
+      if (targetInput && document.activeElement !== targetInput) targetInput.value = targetPrice.toFixed(2);
+      if (slInput && document.activeElement !== slInput) slInput.value = slPrice.toFixed(2);
+      chargesBox.setAttribute('data-price', price);
+    }
+    
+    // Update simple charge labels
+    chargesBox.querySelector('.kp-breakeven-pts').innerText = `Breakeven: +₹${breakEvenDiff} pts`;
+    chargesBox.querySelector('.kp-brokerage-val').innerText = `₹${entryCharges.brokerage.toFixed(2)}`;
+    chargesBox.querySelector('.kp-stt-val').innerText = `₹${entryCharges.stt.toFixed(2)}`;
+    chargesBox.querySelector('.kp-txn-val').innerText = `₹${entryCharges.exchangeTxn.toFixed(2)}`;
+    chargesBox.querySelector('.kp-gst-val').innerText = `₹${entryCharges.gst.toFixed(2)}`;
+    chargesBox.querySelector('.kp-sebi-val').innerText = `₹${entryCharges.sebi.toFixed(2)}`;
+    chargesBox.querySelector('.kp-stamp-val').innerText = `₹${entryCharges.stamp.toFixed(2)}`;
+    chargesBox.querySelector('.kp-total-charges-val').innerText = `₹${entryCharges.total.toFixed(2)}`;
+  }
+
+  // Recalculate target and stop loss net outcomes
+  const targetGross = !isSell ? (targetPrice - price) * qty : (price - targetPrice) * qty;
+  const targetNet = targetGross - (entryCharges.total + targetCharges.total);
+
+  const slGross = !isSell ? (slPrice - price) * qty : (price - slPrice) * qty;
+  const slNet = slGross - (entryCharges.total + slCharges.total);
+
+  // Render P&L output text
+  const netProfitEl = chargesBox.querySelector('.kp-net-profit-val');
+  const netLossEl = chargesBox.querySelector('.kp-net-loss-val');
+
+  if (netProfitEl) {
+    const totalRtCharges = entryCharges.total + targetCharges.total;
+    const sign = targetNet >= 0 ? '+' : '-';
+    netProfitEl.innerHTML = `
+      <span style="color: ${targetNet >= 0 ? '#10b981' : '#f43f5e'}">
+        ${sign}₹${Math.abs(targetNet).toFixed(2)}
+      </span>
+      <span class="kp-projection-detail">(Charges: ₹${totalRtCharges.toFixed(2)})</span>
+    `;
+    const rowEl = netProfitEl.closest('.kp-projection-row');
+    if (rowEl) {
+      rowEl.style.color = targetNet >= 0 ? '#10b981' : '#f43f5e';
     }
   }
-  
-  const totalCharges = brokerage + stt + exchangeTxn + gst + sebi + stamp;
-  const breakEvenDiff = (totalCharges / qty).toFixed(2);
-  
-  chargesBox.innerHTML = `
-    <div class="kp-charges-title">
-      <span>KitePlus Real-Time Charges</span>
-      <span style="color:#f43f5e">Breakeven: +₹${breakEvenDiff} pts</span>
-    </div>
-    <div class="kp-charges-grid">
-      <div class="kp-charge-row">
-        <span class="kp-charge-label">Brokerage:</span>
-        <span class="kp-charge-value">₹${brokerage.toFixed(2)}</span>
-      </div>
-      <div class="kp-charge-row">
-        <span class="kp-charge-label">STT (Tax):</span>
-        <span class="kp-charge-value">₹${stt.toFixed(2)}</span>
-      </div>
-      <div class="kp-charge-row">
-        <span class="kp-charge-label">NSE Txn Fee:</span>
-        <span class="kp-charge-value">₹${exchangeTxn.toFixed(2)}</span>
-      </div>
-      <div class="kp-charge-row">
-        <span class="kp-charge-label">GST (18%):</span>
-        <span class="kp-charge-value">₹${gst.toFixed(2)}</span>
-      </div>
-      <div class="kp-charge-row total">
-        <span>Total Estimated Charges:</span>
-        <span>₹${totalCharges.toFixed(2)}</span>
-      </div>
-    </div>
-  `;
+
+  if (netLossEl) {
+    const totalRtCharges = entryCharges.total + slCharges.total;
+    const sign = slNet >= 0 ? '+' : '-';
+    netLossEl.innerHTML = `
+      <span style="color: ${slNet >= 0 ? '#10b981' : '#f43f5e'}">
+        ${sign}₹${Math.abs(slNet).toFixed(2)}
+      </span>
+      <span class="kp-projection-detail">(Charges: ₹${totalRtCharges.toFixed(2)})</span>
+    `;
+    const rowEl = netLossEl.closest('.kp-projection-row');
+    if (rowEl) {
+      rowEl.style.color = slNet >= 0 ? '#10b981' : '#f43f5e';
+    }
+  }
 }
 
 /* ==========================================
@@ -1541,7 +1941,8 @@ function recordMtmDataPoint() {
   
   mtmHistory.push({
     time: timeStr,
-    val: pnl,
+    val: pnl, // Gross
+    netVal: pnl - totalExecutedCharges, // Net after charges
     timestamp: timestamp
   });
   
@@ -1714,10 +2115,6 @@ function handleMtmChartInjection() {
   
   // Synchronize initial theme variables
   updateChartTheme(chartWrapper);
-  
-  if (!chartWrapper.classList.contains('collapsed')) {
-    drawMtmChart();
-  }
 }
 
 // Draw smooth gradient curve on canvas
@@ -1759,8 +2156,8 @@ function drawMtmChart() {
     return;
   }
   
-  // Calculate range bounds
-  let vals = mtmHistory.map(pt => pt.val);
+  // Calculate range bounds (using Net P&L as the main metric)
+  let vals = mtmHistory.map(pt => pt.netVal !== undefined ? pt.netVal : pt.val);
   let maxVal = Math.max(...vals);
   let minVal = Math.min(...vals);
   
@@ -1784,11 +2181,13 @@ function drawMtmChart() {
   const lowPercent = (realMin / totalCapital) * 100;
   
   if (highEl) {
-    highEl.innerText = `${realMax >= 0 ? '+' : ''}₹${formatCurrency(realMax)} (${realMax >= 0 ? '+' : ''}${highPercent.toFixed(2)}%)`;
+    const sign = realMax >= 0 ? '+' : '-';
+    highEl.innerText = `${sign}₹${formatCurrency(Math.abs(realMax))} (${realMax >= 0 ? '+' : '-'}${Math.abs(highPercent).toFixed(2)}%)`;
     highEl.className = realMax >= 0 ? 'profit' : 'loss';
   }
   if (lowEl) {
-    lowEl.innerText = `${realMin >= 0 ? '+' : ''}₹${formatCurrency(realMin)} (${realMin >= 0 ? '+' : ''}${lowPercent.toFixed(2)}%)`;
+    const sign = realMin >= 0 ? '+' : '-';
+    lowEl.innerText = `${sign}₹${formatCurrency(Math.abs(realMin))} (${realMin >= 0 ? '+' : '-'}${Math.abs(lowPercent).toFixed(2)}%)`;
     lowEl.className = realMin >= 0 ? 'profit' : 'loss';
   }
   
@@ -1818,7 +2217,7 @@ function drawMtmChart() {
     // Right Y-axis: Currency value
     ctx.textAlign = 'left';
     ctx.fillText(`${yVal >= 0 ? '+' : ''}₹${formatCurrency(yVal)}`, width - chartPadding.right + 8, yPos);
-
+  
     // Left Y-axis: Percentage on total capital size
     ctx.textAlign = 'right';
     const yPercent = (yVal / totalCapital) * 100;
@@ -1842,7 +2241,8 @@ function drawMtmChart() {
   // Coordinate Mapping
   const points = mtmHistory.map((pt, idx) => {
     const xRatio = idx / (mtmHistory.length - 1);
-    const yRatio = (maxVal - pt.val) / (maxVal - minVal);
+    const ptVal = pt.netVal !== undefined ? pt.netVal : pt.val;
+    const yRatio = (maxVal - ptVal) / (maxVal - minVal);
     return {
       x: chartPadding.left + xRatio * graphWidth,
       y: chartPadding.top + yRatio * graphHeight
@@ -1859,7 +2259,8 @@ function drawMtmChart() {
   }
   ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y);
   
-  const currentPnl = mtmHistory[mtmHistory.length - 1].val;
+  const lastPoint = mtmHistory[mtmHistory.length - 1];
+  const currentPnl = lastPoint.netVal !== undefined ? lastPoint.netVal : lastPoint.val;
   const color = currentPnl >= 0 ? '#10b981' : '#ef4444';
   
   ctx.strokeStyle = color;
@@ -1933,8 +2334,11 @@ function drawMtmChart() {
     ctx.fill();
     ctx.stroke();
     
-    // Draw tooltip box
-    const tooltipText = `${dataPt.time}: ${dataPt.val >= 0 ? '+' : ''}₹${formatCurrency(dataPt.val)}`;
+    // Draw tooltip box with both Gross and Net values
+    const netVal = dataPt.netVal !== undefined ? dataPt.netVal : dataPt.val;
+    const grossSign = dataPt.val >= 0 ? '+' : '-';
+    const netSign = netVal >= 0 ? '+' : '-';
+    const tooltipText = `${dataPt.time} | Gross: ${grossSign}₹${formatCurrency(Math.abs(dataPt.val))} | Net: ${netSign}₹${formatCurrency(Math.abs(netVal))}`;
     ctx.font = 'bold 11px "Inter", sans-serif';
     const textWidth = ctx.measureText(tooltipText).width;
     
@@ -1958,7 +2362,7 @@ function drawMtmChart() {
     ctx.fill();
     ctx.stroke();
     
-    ctx.fillStyle = dataPt.val >= 0 ? '#10b981' : '#ef4444';
+    ctx.fillStyle = netVal >= 0 ? '#10b981' : '#ef4444';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(tooltipText, boxX + tooltipPadding.x, boxY + boxHeight / 2);
@@ -1972,9 +2376,10 @@ function exportChartCSV() {
     return;
   }
   
-  let csvContent = "data:text/csv;charset=utf-8,Timestamp,Time,MTM P&L\n";
+  let csvContent = "data:text/csv;charset=utf-8,Timestamp,Time,Gross MTM P&L,Net MTM P&L\n";
   mtmHistory.forEach(pt => {
-    csvContent += `${pt.timestamp},${pt.time},${pt.val}\n`;
+    const netVal = pt.netVal !== undefined ? pt.netVal : pt.val;
+    csvContent += `${pt.timestamp},${pt.time},${pt.val},${netVal}\n`;
   });
   
   const encodedUri = encodeURI(csvContent);

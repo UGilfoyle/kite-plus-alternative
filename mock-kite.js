@@ -4,13 +4,17 @@
 window.mockState = {
   availableMargin: 500000.00,
   usedMargin: 0.00,
-  executedTradesCount: 0,
+  executedTradesCount: 3,
   positions: [
     { product: 'MIS', symbol: 'NIFTY 26 JUN 18000 CE', qty: 75, avgPrice: 120.50, ltp: 125.20 },
     { product: 'NRML', symbol: 'BANKNIFTY 26 JUN 47500 PE', qty: -15, avgPrice: 210.00, ltp: 205.10 },
     { product: 'CNC', symbol: 'RELIANCE', qty: 10, avgPrice: 2850.00, ltp: 2910.50 }
   ],
-  orders: []
+  orders: [
+    { time: '09:20:15', action: 'BUY', symbol: 'NIFTY 26 JUN 18000 CE', product: 'MIS', qty: 75, price: 120.50, status: 'EXECUTED' },
+    { time: '09:45:30', action: 'SELL', symbol: 'BANKNIFTY 26 JUN 47500 PE', product: 'NRML', qty: 15, price: 210.00, status: 'EXECUTED' },
+    { time: '10:05:10', action: 'BUY', symbol: 'RELIANCE', product: 'CNC', qty: 10, price: 2850.00, status: 'EXECUTED' }
+  ]
 };
 
 // Mock Instruments Database

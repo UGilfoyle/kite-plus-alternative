@@ -272,6 +272,86 @@
   justify-content: space-between;
 }
 
+/* P&L Projection Styles */
+.kp-projection-section {
+  margin-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.kp-projection-title {
+  font-weight: 600;
+  color: #94a3b8;
+  margin-bottom: 8px;
+  font-size: 11px;
+}
+
+.kp-projection-inputs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.kp-projection-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.kp-projection-field label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.kp-projection-input {
+  background-color: #0f172a;
+  border: 1px solid #334155;
+  color: #f1f5f9;
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 11px;
+  width: 100%;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color 0.15s ease-in-out;
+}
+
+.kp-projection-input:focus {
+  border-color: #38bdf8;
+}
+
+.kp-projection-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kp-projection-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.kp-projection-row.profit {
+  color: #10b981;
+}
+
+.kp-projection-row.loss {
+  color: #f43f5e;
+}
+
+.kp-projection-detail {
+  font-size: 9px;
+  color: #64748b;
+  margin-left: 6px;
+  font-weight: normal;
+}
+
+
 /* Express Basket Sidebar Drawer */
 .kp-basket-sidebar {
   position: fixed;
