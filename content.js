@@ -666,39 +666,67 @@ function parsePositionRow(row) {
   let qty = 0;
   let pnl = 0.00;
   
+  let symbolFound = false;
+  let qtyFound = false;
+  let pnlFound = false;
+  
   // 1. Try to parse using header-based dynamic mapping first
   if (table && Object.keys(colMap).length > 0) {
     if (colMap.instrument !== undefined && colMap.instrument < tds.length) {
       const instTd = tds[colMap.instrument];
       const symbolSpan = instTd.querySelector('span.tradingsymbol');
       symbol = symbolSpan ? symbolSpan.innerText.trim() : instTd.innerText.trim();
+      if (symbol !== '') symbolFound = true;
     }
     if (colMap.qty !== undefined && colMap.qty < tds.length) {
-      qty = parseInt(tds[colMap.qty].innerText.replace(/[^0-9-]/g, '')) || 0;
+      const txt = tds[colMap.qty].innerText.replace(/[^0-9-]/g, '');
+      if (txt !== '') {
+        qty = parseInt(txt) || 0;
+        qtyFound = true;
+      }
     }
     if (colMap.pnl !== undefined && colMap.pnl < tds.length) {
-      pnl = parseFloat(tds[colMap.pnl].innerText.replace(/[^0-9.-]/g, '')) || 0;
+      const txt = tds[colMap.pnl].innerText.replace(/[^0-9.-]/g, '');
+      if (txt !== '') {
+        pnl = parseFloat(txt) || 0.00;
+        pnlFound = true;
+      }
     }
   }
   
   // 2. Fallbacks if header mapping was missing or returned partials
-  if (!symbol) {
+  if (!symbolFound) {
     const instrumentEl = row.querySelector('td.instrument span.tradingsymbol, td.instrument, .instrument');
-    if (instrumentEl) symbol = instrumentEl.innerText.trim();
+    if (instrumentEl) {
+      symbol = instrumentEl.innerText.trim();
+      if (symbol !== '') symbolFound = true;
+    }
   }
   
-  if (qty === 0) {
+  if (!qtyFound) {
     const qtyEl = row.querySelector('td.quantity, .quantity');
-    if (qtyEl) qty = parseInt(qtyEl.innerText.replace(/[^0-9-]/g, '')) || 0;
+    if (qtyEl) {
+      const txt = qtyEl.innerText.replace(/[^0-9-]/g, '');
+      if (txt !== '') {
+        qty = parseInt(txt) || 0;
+        qtyFound = true;
+      }
+    }
   }
   
-  if (pnl === 0.00) {
+  if (!pnlFound) {
     const pnlEl = row.querySelector('td.pnl, td.profit, td.loss, .pnl, .profit, .loss');
-    if (pnlEl) pnl = parseFloat(pnlEl.innerText.replace(/[^0-9.-]/g, '')) || 0;
+    if (pnlEl) {
+      const txt = pnlEl.innerText.replace(/[^0-9.-]/g, '');
+      if (txt !== '') {
+        pnl = parseFloat(txt) || 0.00;
+        pnlFound = true;
+      }
+    }
   }
   
-  // 3. Absolute index-based fallback with corrected index offsets
-  if (!symbol || qty === 0 || pnl === 0) {
+  // 3. Absolute index-based fallback ONLY if the columns were not found at all
+  if (!symbolFound || !qtyFound || !pnlFound) {
     if (tds.length >= 4) {
       let instIdx = -1;
       for (let i = 0; i < tds.length; i++) {
@@ -709,36 +737,41 @@ function parsePositionRow(row) {
       }
       
       if (instIdx !== -1) {
-        if (!symbol) symbol = tds[instIdx].innerText.trim();
+        if (!symbolFound) {
+          symbol = tds[instIdx].innerText.trim();
+          symbolFound = true;
+        }
         const qtyIdx = instIdx + 1;
-        if (qty === 0 && qtyIdx < tds.length) {
+        if (!qtyFound && qtyIdx < tds.length) {
           qty = parseInt(tds[qtyIdx].innerText.replace(/[^0-9-]/g, '')) || 0;
+          qtyFound = true;
         }
-        // P&L is typically 3 columns after quantity (Qty, Avg, LTP, P&L) -> instIdx + 4
         const pnlIdx = instIdx + 4;
-        if (pnl === 0.00 && pnlIdx < tds.length) {
+        if (!pnlFound && pnlIdx < tds.length) {
           pnl = parseFloat(tds[pnlIdx].innerText.replace(/[^0-9.-]/g, '')) || 0;
+          pnlFound = true;
         }
-        // If that's not P&L, try second to last (since Chg is last)
         const fallbackPnlIdx = tds.length - 2;
-        if (pnl === 0.00 && fallbackPnlIdx >= 0 && fallbackPnlIdx < tds.length) {
+        if (!pnlFound && fallbackPnlIdx >= 0 && fallbackPnlIdx < tds.length) {
           pnl = parseFloat(tds[fallbackPnlIdx].innerText.replace(/[^0-9.-]/g, '')) || 0;
+          pnlFound = true;
         }
       } else {
         const hasCheckbox = tds[0].querySelector('input[type="checkbox"]') !== null || tds[0].classList.contains('selection');
         const shift = hasCheckbox ? 1 : 0;
         
-        // Correct offsets:
-        // Product is 0 + shift
-        // Instrument is 1 + shift
-        // Qty is 2 + shift
-        // Avg is 3 + shift
-        // LTP is 4 + shift
-        // P&L is 5 + shift
-        // Chg is 6 + shift
-        if (!symbol && tds.length > (1 + shift)) symbol = tds[1 + shift].innerText.trim();
-        if (qty === 0 && tds.length > (2 + shift)) qty = parseInt(tds[2 + shift].innerText.replace(/[^0-9-]/g, '')) || 0;
-        if (pnl === 0.00 && tds.length > (5 + shift)) pnl = parseFloat(tds[5 + shift].innerText.replace(/[^0-9.-]/g, '')) || 0;
+        if (!symbolFound && tds.length > (1 + shift)) {
+          symbol = tds[1 + shift].innerText.trim();
+          symbolFound = true;
+        }
+        if (!qtyFound && tds.length > (2 + shift)) {
+          qty = parseInt(tds[2 + shift].innerText.replace(/[^0-9-]/g, '')) || 0;
+          qtyFound = true;
+        }
+        if (!pnlFound && tds.length > (5 + shift)) {
+          pnl = parseFloat(tds[5 + shift].innerText.replace(/[^0-9.-]/g, '')) || 0;
+          pnlFound = true;
+        }
       }
     }
   }
