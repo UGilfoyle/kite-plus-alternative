@@ -22,6 +22,7 @@ async function init() {
   await loadSettings();
   await loadMtmHistory();
   await loadExecutedCharges();
+  await updateMarginsFromAPI();
   setupMutationObserver();
   setupSettingsListener();
   
@@ -122,6 +123,30 @@ function getCookie(name) {
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);
   if (parts.length === 2) return parts.pop().split(';').shift();
+  return null;
+}
+
+// Session token helper (checks cookies, localStorage, sessionStorage)
+function getSessionToken() {
+  let token = getCookie('enctoken');
+  if (token) return token;
+  
+  try {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user && user.enctoken) return user.enctoken;
+    }
+  } catch (e) {}
+  
+  try {
+    const userStr = sessionStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user && user.enctoken) return user.enctoken;
+    }
+  } catch (e) {}
+  
   return null;
 }
 
@@ -284,7 +309,7 @@ async function updateExecutedCharges() {
   
   try {
     const headers = {};
-    const token = getCookie('enctoken');
+    const token = getSessionToken();
     if (token) {
       headers['Authorization'] = `enctoken ${token}`;
     }
@@ -1882,7 +1907,7 @@ async function updateMarginsFromAPI() {
   
   try {
     const headers = {};
-    const token = getCookie('enctoken');
+    const token = getSessionToken();
     if (token) {
       headers['Authorization'] = `enctoken ${token}`;
     }
