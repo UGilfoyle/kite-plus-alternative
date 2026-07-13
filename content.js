@@ -328,7 +328,7 @@ function updateChartHeaderMetrics() {
   const used = getUsedMargin();
   const pnl = getNetPnL();
   
-  const totalCapital = Math.max(1, margin + used);
+  const totalCapital = (margin + used) > 0 ? (margin + used) : 500000.00;
   const pnlPercent = (pnl / totalCapital) * 100;
   
   const pnlClass = pnl >= 0 ? 'profit' : 'loss';
@@ -483,11 +483,11 @@ function getAvailableMargin() {
   updateMarginsFromAPI();
 
   // 1. Try to find by ID/class first
-  const marginEl = document.querySelector('.funds .margin-available, .funds-table .available, #available-margin, td.available-margin, .funds .available-margin');
+  const marginEl = document.querySelector('.funds .margin-available, .funds-table .available, #available-margin, td.available-margin, .funds .margin-available');
   if (marginEl) {
     const txt = marginEl.textContent.replace(/[^0-9.-]/g, '');
     const val = parseFloat(txt);
-    if (!isNaN(val)) {
+    if (!isNaN(val) && val > 0) {
       if (DEBUG) console.log(`[KitePlus Debug] Scraped Available Margin via selector: ${val}`);
       currentMargin = val;
       // Cache in local storage
@@ -507,7 +507,7 @@ function getAvailableMargin() {
         const valEl = parent.querySelector('td.bold, td:last-child, span.val, .value');
         if (valEl) {
           const val = parseFloat(valEl.innerText.replace(/[^0-9.-]/g, ''));
-          if (!isNaN(val)) {
+          if (!isNaN(val) && val > 0) {
             if (DEBUG) console.log(`[KitePlus Debug] Scraped Available Margin via label search: ${val}`);
             currentMargin = val;
             // Cache in local storage
@@ -526,7 +526,7 @@ function getAvailableMargin() {
     if (DEBUG) console.log(`[KitePlus Debug] Using mockState Available Margin: ${window.mockState.availableMargin}`);
     currentMargin = window.mockState.availableMargin;
   }
-  return currentMargin;
+  return currentMargin > 0 ? currentMargin : 500000.00;
 }
 
 // Scrape Used Margin from page
@@ -536,7 +536,7 @@ function getUsedMargin() {
   if (usedEl) {
     const txt = usedEl.textContent.replace(/[^0-9.-]/g, '');
     const val = parseFloat(txt);
-    if (!isNaN(val)) {
+    if (!isNaN(val) && val >= 0) {
       if (DEBUG) console.log(`[KitePlus Debug] Scraped Used Margin via selector: ${val}`);
       usedMargin = val;
       // Cache in local storage
@@ -556,7 +556,7 @@ function getUsedMargin() {
         const valEl = parent.querySelector('td:last-child, span.val, .value');
         if (valEl) {
           const val = parseFloat(valEl.innerText.replace(/[^0-9.-]/g, ''));
-          if (!isNaN(val)) {
+          if (!isNaN(val) && val >= 0) {
             if (DEBUG) console.log(`[KitePlus Debug] Scraped Used Margin via label search: ${val}`);
             usedMargin = val;
             // Cache in local storage
@@ -575,7 +575,7 @@ function getUsedMargin() {
     if (DEBUG) console.log(`[KitePlus Debug] Using mockState Used Margin: ${window.mockState.usedMargin}`);
     usedMargin = window.mockState.usedMargin;
   }
-  return usedMargin;
+  return usedMargin >= 0 ? usedMargin : 0.00;
 }
 
 // Scrape Trades Count
@@ -1881,24 +1881,32 @@ async function updateMarginsFromAPI() {
   }
   
   try {
-    const response = await fetch('/api/margins');
+    const headers = {};
+    const token = getCookie('enctoken');
+    if (token) {
+      headers['Authorization'] = `enctoken ${token}`;
+    }
+    
+    const response = await fetch('/oms/funds', { headers });
     if (response.ok) {
       const json = await response.json();
       if (json && json.status === 'success' && json.data) {
         const equity = json.data.equity;
         if (equity) {
-          const avail = parseFloat(equity.net) || 0;
-          const used = parseFloat(equity.utilised?.debits) || 0;
+          const avail = parseFloat(equity.net);
+          const used = parseFloat(equity.utilised?.debits);
           
-          currentMargin = avail;
-          usedMargin = used;
-          lastApiMarginFetch = now;
-          
-          if (DEBUG) console.log(`[KitePlus Debug] API Margins fetched: Available=${currentMargin}, Used=${usedMargin}`);
-          
-          // Cache in local storage
-          if (typeof chrome !== 'undefined' && chrome.storage) {
-            chrome.storage.local.set({ cachedMargin: currentMargin, cachedUsedMargin: usedMargin });
+          if (!isNaN(avail) && avail > 0) {
+            currentMargin = avail;
+            usedMargin = isNaN(used) ? 0 : used;
+            lastApiMarginFetch = now;
+            
+            if (DEBUG) console.log(`[KitePlus Debug] API Margins fetched: Available=${currentMargin}, Used=${usedMargin}`);
+            
+            // Cache in local storage
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+              chrome.storage.local.set({ cachedMargin: currentMargin, cachedUsedMargin: usedMargin });
+            }
           }
         }
       }
@@ -2184,7 +2192,7 @@ function drawMtmChart() {
   
   const margin = getAvailableMargin();
   const used = getUsedMargin();
-  const totalCapital = Math.max(1, margin + used);
+  const totalCapital = (margin + used) > 0 ? (margin + used) : 500000.00;
   
   const highPercent = (realMax / totalCapital) * 100;
   const lowPercent = (realMin / totalCapital) * 100;
