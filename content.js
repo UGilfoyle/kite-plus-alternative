@@ -5,7 +5,8 @@ let settings = {
   grouping: true,
   basket: true,
   optionchain: true,
-  charges: true
+  charges: true,
+  signals: true
 };
 
 // Global state
@@ -79,7 +80,9 @@ function setupMutationObserver() {
              !target.closest('.kp-modal-backdrop') && 
              !target.closest('.kp-group-controls') &&
              !target.closest('.kp-watchlist-inline-oc') &&
-             !target.closest('.kp-charges-box');
+             !target.closest('.kp-charges-box') &&
+             !target.closest('.kp-signal-panel') &&
+             !target.closest('.kp-signal-toast');
     });
     if (hasExternalMutation) {
       runModules();
@@ -105,6 +108,7 @@ function runModules() {
       handleWatchlistOptionChain();
       handleOrderWindowCharges();
       handleExpressBasketDrawer();
+      handleSignalPanel();
     } finally {
       setTimeout(() => {
         isApplyingChanges = false;
@@ -372,6 +376,11 @@ function updateDynamicValues() {
   if (isPositionsPage) {
     recordMtmDataPoint();
     handleMtmChartInjection();
+  }
+  
+  // Signal Engine: collect price ticks and update signals
+  if (settings.signals) {
+    updateSignalEngine();
   }
 }
 
@@ -2392,5 +2401,502 @@ function exportChartCSV() {
   document.body.removeChild(link);
 }
 
+/* ==========================================
+   MODULE 6: SIGNAL ENGINE — UI & Price Scraper
+   ========================================== */
+let signalCandleCollector = null;
+let signalHistory = [];
+let lastSignalResult = null;
+let lastSignalTimestamp = 0;
+let signalPanelCollapsed = false;
+let lastTickScrapeTime = 0;
+
+// Initialize the candle collector from the signal engine
+function initSignalEngine() {
+  if (!window.KPSignalEngine) {
+    if (DEBUG) console.log('[KitePlus Signal] Waiting for signal engine to load...');
+    return false;
+  }
+  if (!signalCandleCollector) {
+    signalCandleCollector = new window.KPSignalEngine.CandleCollector(2 * 60 * 1000); // 2-min candles
+    if (DEBUG) console.log('[KitePlus Signal] CandleCollector initialized (2-min candles)');
+  }
+  return true;
+}
+
+// Scrape the current price from the Kite chart page
+function scrapeCurrentPrice() {
+  // Strategy 1: Chart header LTP (works on the chart view)
+  const chartLTP = document.querySelector(
+    '.chart-container .chart-price, ' +
+    '.chart-container .last-price, ' +
+    '.chart-header .last-price, ' +
+    '.chart-controls-bar .chart-price, ' +
+    '.chart-widget .ltp, ' +
+    '#chart-ltp'
+  );
+  if (chartLTP) {
+    const val = parseFloat(chartLTP.innerText.replace(/[^0-9.-]/g, ''));
+    if (!isNaN(val) && val > 0) return val;
+  }
+
+  // Strategy 2: TradingView widget price display
+  const tvPrices = document.querySelectorAll(
+    '.chart-markup-table .price-axis .pane-legend-line .pane-legend-title__main-title, ' +
+    '.tv-symbol-price-quote__value, ' +
+    '.chart-markup-table .price-axis .last-price-label, ' +
+    '.valueItem-AdJFPlHp .js-symbol-last, ' +
+    '.chart-markup-table .pane .pane-legend .legendSeriesItem .apply-overflow-tooltip'
+  );
+  for (const el of tvPrices) {
+    const val = parseFloat(el.innerText.replace(/[^0-9.-]/g, ''));
+    if (!isNaN(val) && val > 0) return val;
+  }
+
+  // Strategy 3: Depth / Market depth widget LTP
+  const depthLTP = document.querySelector(
+    '.depth .last-price, ' +
+    '.depth-content .last-price, ' +
+    '.marketdepth-widget .ltp, ' +
+    '.instrument-widget .last-price'
+  );
+  if (depthLTP) {
+    const val = parseFloat(depthLTP.innerText.replace(/[^0-9.-]/g, ''));
+    if (!isNaN(val) && val > 0) return val;
+  }
+
+  // Strategy 4: Watchlist selected instrument LTP
+  const watchlistLTP = document.querySelector(
+    '.instruments .active .last-price, ' +
+    '.instruments .selected .last-price, ' +
+    '.instruments .highlight .price, ' +
+    '.instrument.active .last-price'
+  );
+  if (watchlistLTP) {
+    const val = parseFloat(watchlistLTP.innerText.replace(/[^0-9.-]/g, ''));
+    if (!isNaN(val) && val > 0) return val;
+  }
+
+  // Strategy 5: Any visible LTP on the page — try broad selector
+  const allPriceElements = document.querySelectorAll('.last-price, .ltp, [data-col="last_price"]');
+  for (const el of allPriceElements) {
+    const val = parseFloat(el.innerText.replace(/[^0-9.-]/g, ''));
+    if (!isNaN(val) && val > 0) return val;
+  }
+
+  // Strategy 6: Mock simulator
+  if (window.mockState && window.mockState.lastPrice !== undefined) {
+    return window.mockState.lastPrice;
+  }
+
+  return null;
+}
+
+// Get the current instrument symbol from the chart page
+function scrapeCurrentSymbol() {
+  // Chart header symbol
+  const symbolEl = document.querySelector(
+    '.chart-container .tradingsymbol, ' +
+    '.chart-header .tradingsymbol, ' +
+    '.chart-controls-bar .symbol, ' +
+    '.chart-widget .symbol-name, ' +
+    '.chart-widget .instrument-name'
+  );
+  if (symbolEl) return symbolEl.innerText.trim();
+
+  // TradingView title
+  const tvTitle = document.querySelector(
+    '.chart-markup-table .pane-legend-line .pane-legend-title__main-title, ' +
+    '.tv-symbol-header__short-name'
+  );
+  if (tvTitle) return tvTitle.innerText.trim();
+
+  // Breadcrumb or page title
+  const breadcrumb = document.querySelector('.page-title, .chart-title, h1.tradingsymbol');
+  if (breadcrumb) return breadcrumb.innerText.trim();
+
+  // Fallback
+  if (window.mockState && window.mockState.symbol) return window.mockState.symbol;
+  return 'NIFTY';
+}
+
+// Main signal engine update loop — called every 200ms from updateDynamicValues
+function updateSignalEngine() {
+  if (!initSignalEngine()) return;
+
+  const now = Date.now();
+  // Rate limit tick scraping to every 1 second
+  if (now - lastTickScrapeTime < 1000) return;
+  lastTickScrapeTime = now;
+
+  const price = scrapeCurrentPrice();
+  if (price === null) return;
+
+  // Feed tick to candle collector
+  signalCandleCollector.addTick(price, now);
+  signalCandleCollector.trim(500);
+
+  // Generate signals (rate limit to every 2 seconds)
+  if (now - lastSignalTimestamp < 2000 && lastSignalResult) return;
+  lastSignalTimestamp = now;
+
+  const candles = signalCandleCollector.getAllCandles();
+  const result = window.KPSignalEngine.generateSignals(candles);
+  
+  // Check if we have a NEW strong signal (direction changed or new threshold crossed)
+  const isNewSignal = result.direction && result.strength >= 83 &&
+    (!lastSignalResult || lastSignalResult.direction !== result.direction ||
+     lastSignalResult.strength < 83);
+  
+  if (isNewSignal) {
+    // Record to history
+    const timeStr = new Date().toLocaleTimeString('en-US', {
+      hour12: false, hour: '2-digit', minute: '2-digit'
+    });
+    signalHistory.unshift({
+      time: timeStr,
+      direction: result.direction,
+      strength: result.strength,
+      price: result.currentPrice,
+      message: result.message,
+      timestamp: now
+    });
+    // Keep last 50 signals
+    if (signalHistory.length > 50) signalHistory.pop();
+    
+    // Show toast notification
+    showSignalToast(result);
+  }
+
+  lastSignalResult = result;
+
+  // Update the panel UI
+  updateSignalPanelUI(result);
+}
+
+// Handle signal panel injection / removal based on settings
+function handleSignalPanel() {
+  if (!settings.signals) {
+    const existing = document.querySelector('.kp-signal-panel');
+    if (existing) existing.remove();
+    const toast = document.querySelector('.kp-signal-toast');
+    if (toast) toast.remove();
+    return;
+  }
+
+  // Only show on chart page or mock simulator
+  const isChartPage = window.location.pathname.includes('/chart') ||
+                      window.location.href.includes('mock-kite.html') ||
+                      document.getElementById('mock-kite-dashboard') !== null ||
+                      document.querySelector('.chart-container, .chart-widget, .tv-chart') !== null;
+
+  // Also show on positions page for broader coverage
+  const isPositionsPage = window.location.pathname.includes('/positions');
+
+  if (!isChartPage && !isPositionsPage) {
+    // Remove panel if we navigated away
+    const existing = document.querySelector('.kp-signal-panel');
+    if (existing) existing.remove();
+    return;
+  }
+
+  let panel = document.querySelector('.kp-signal-panel');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'kp-signal-panel';
+    if (signalPanelCollapsed) panel.classList.add('collapsed');
+    document.body.appendChild(panel);
+    renderSignalPanel(panel);
+  }
+}
+
+// Render the full signal panel structure
+function renderSignalPanel(panel) {
+  panel.innerHTML = `
+    <div class="kp-signal-header" id="kp-signal-toggle">
+      <div class="kp-signal-header-left">
+        <div class="kp-signal-icon">📊</div>
+        <span class="kp-signal-header-chevron">▼</span>
+        <span class="kp-signal-header-title">Signal Engine</span>
+      </div>
+      <div class="kp-signal-header-right">
+        <span class="kp-signal-header-badge collecting" id="kp-signal-header-badge">LOADING</span>
+        <button class="kp-signal-close-btn" id="kp-signal-close" title="Close Signal Panel">&times;</button>
+      </div>
+    </div>
+    <div class="kp-signal-body">
+      <div class="kp-signal-candle-info" id="kp-signal-candle-info">
+        <span>Candles: <span class="candle-count" id="kp-candle-count">0</span></span>
+        <span>Timeframe: <span class="candle-timeframe">2 min</span></span>
+        <span>Symbol: <span id="kp-signal-symbol" style="color: #e2e8f0; font-weight: 600;">—</span></span>
+      </div>
+      <div class="kp-signal-main" id="kp-signal-main">
+        <div class="kp-signal-main-badge neutral" id="kp-signal-main-badge">
+          — Collecting Data...
+        </div>
+        <div class="kp-signal-strength-bar">
+          <div class="kp-signal-strength-fill neutral" id="kp-signal-strength-fill" style="width: 0%"></div>
+        </div>
+        <div class="kp-signal-strength-label" id="kp-signal-strength-label">Confluence: 0%</div>
+        <div class="kp-signal-price-info" id="kp-signal-price-info">
+          <span>Price: <span class="value" id="kp-signal-price">—</span></span>
+        </div>
+      </div>
+      <div class="kp-signal-indicators" id="kp-signal-indicators">
+        <div class="kp-signal-indicators-title">Indicator Breakdown (6 indicators)</div>
+        <div id="kp-signal-indicator-rows">
+          <!-- Populated dynamically -->
+        </div>
+      </div>
+      <div class="kp-signal-history">
+        <div class="kp-signal-history-title">
+          <span>Signal History</span>
+          <span id="kp-signal-history-count" style="color: #94a3b8">0 signals</span>
+        </div>
+        <div class="kp-signal-history-list" id="kp-signal-history-list">
+          <div class="kp-signal-history-empty">No signals yet. Collecting market data...</div>
+        </div>
+      </div>
+      <div class="kp-signal-footer">
+        <button class="kp-signal-add-basket-btn" id="kp-signal-add-basket" disabled>
+          Add Signal to Express Basket
+        </button>
+        <div class="kp-signal-disclaimer">
+          ⚠️ For educational purposes only. Not financial advice. Past indicator confluence does not guarantee future results.
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Bind toggle collapse
+  const toggleHeader = panel.querySelector('#kp-signal-toggle');
+  toggleHeader.addEventListener('click', (e) => {
+    // Don't toggle if clicking close button
+    if (e.target.closest('.kp-signal-close-btn')) return;
+    signalPanelCollapsed = !signalPanelCollapsed;
+    panel.classList.toggle('collapsed', signalPanelCollapsed);
+    const chevron = panel.querySelector('.kp-signal-header-chevron');
+    chevron.innerText = signalPanelCollapsed ? '▶' : '▼';
+  });
+
+  // Bind close button
+  const closeBtn = panel.querySelector('#kp-signal-close');
+  closeBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    settings.signals = false;
+    panel.remove();
+    // Persist setting
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.set({ settings });
+    }
+  });
+
+  // Bind Add to Basket button
+  const addBasketBtn = panel.querySelector('#kp-signal-add-basket');
+  addBasketBtn.addEventListener('click', () => {
+    if (!lastSignalResult || !lastSignalResult.direction || lastSignalResult.strength < 83) return;
+
+    const symbol = scrapeCurrentSymbol();
+    const action = 'BUY';
+    const price = lastSignalResult.currentPrice || 100;
+    const legName = `${symbol} ${lastSignalResult.direction}`;
+
+    addLegToBasket(legName, action, price);
+    openBasketSidebar();
+  });
+}
+
+// Update the signal panel UI with the latest signal result
+function updateSignalPanelUI(result) {
+  if (!result) return;
+  const panel = document.querySelector('.kp-signal-panel');
+  if (!panel) return;
+
+  // --- Header Badge ---
+  const headerBadge = panel.querySelector('#kp-signal-header-badge');
+  if (headerBadge) {
+    if (!result.direction && result.message.includes('Collecting')) {
+      headerBadge.textContent = `${signalCandleCollector ? signalCandleCollector.getCandleCount() : 0}/35`;
+      headerBadge.className = 'kp-signal-header-badge collecting';
+    } else if (result.direction && result.strength >= 100) {
+      headerBadge.textContent = `${result.message}`;
+      headerBadge.className = `kp-signal-header-badge signal-strong-${result.direction.toLowerCase()}`;
+    } else if (result.direction && result.strength >= 83) {
+      headerBadge.textContent = `${result.message}`;
+      headerBadge.className = `kp-signal-header-badge signal-${result.direction.toLowerCase()}`;
+    } else {
+      headerBadge.textContent = 'NO SIGNAL';
+      headerBadge.className = 'kp-signal-header-badge no-signal';
+    }
+  }
+
+  // --- Candle Info ---
+  const candleCount = panel.querySelector('#kp-candle-count');
+  if (candleCount && signalCandleCollector) {
+    candleCount.textContent = signalCandleCollector.getCandleCount();
+  }
+
+  const symbolEl = panel.querySelector('#kp-signal-symbol');
+  if (symbolEl) {
+    symbolEl.textContent = scrapeCurrentSymbol();
+  }
+
+  // --- Main Signal Badge ---
+  const mainBadge = panel.querySelector('#kp-signal-main-badge');
+  if (mainBadge) {
+    if (result.direction && result.strength >= 83) {
+      const isStrong = result.strength >= 100;
+      mainBadge.className = `kp-signal-main-badge ${result.direction.toLowerCase()} ${isStrong ? 'strong' : ''}`;
+      mainBadge.textContent = result.message;
+    } else if (result.direction && result.strength >= 67) {
+      mainBadge.className = 'kp-signal-main-badge neutral';
+      mainBadge.textContent = result.message;
+    } else if (result.message.includes('Collecting')) {
+      mainBadge.className = 'kp-signal-main-badge neutral';
+      mainBadge.textContent = result.message;
+    } else {
+      mainBadge.className = 'kp-signal-main-badge neutral';
+      mainBadge.textContent = '— No Clear Signal';
+    }
+  }
+
+  // --- Strength Bar ---
+  const strengthFill = panel.querySelector('#kp-signal-strength-fill');
+  if (strengthFill) {
+    strengthFill.style.width = `${result.strength}%`;
+    if (result.direction === 'CE') {
+      strengthFill.className = 'kp-signal-strength-fill ce';
+    } else if (result.direction === 'PE') {
+      strengthFill.className = 'kp-signal-strength-fill pe';
+    } else {
+      strengthFill.className = 'kp-signal-strength-fill neutral';
+    }
+  }
+
+  const strengthLabel = panel.querySelector('#kp-signal-strength-label');
+  if (strengthLabel) {
+    const ceCount = result.bullishCount || 0;
+    const peCount = result.bearishCount || 0;
+    strengthLabel.textContent = `Confluence: ${result.strength}% (CE: ${ceCount}/6 | PE: ${peCount}/6)`;
+  }
+
+  // --- Price ---
+  const priceEl = panel.querySelector('#kp-signal-price');
+  if (priceEl && result.currentPrice) {
+    priceEl.textContent = `₹${result.currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  }
+
+  // --- Indicator Rows ---
+  const indicatorContainer = panel.querySelector('#kp-signal-indicator-rows');
+  if (indicatorContainer && result.indicators) {
+    const indicatorNames = {
+      rsi: 'RSI (14)',
+      macd: 'MACD',
+      ema: 'EMA 9/21',
+      bb: 'Bollinger',
+      vwap: 'VWAP',
+      supertrend: 'Supertrend'
+    };
+
+    const indicatorIcons = {
+      rsi: '📈',
+      macd: '📊',
+      ema: '〰️',
+      bb: '📉',
+      vwap: '⚖️',
+      supertrend: '🔺'
+    };
+
+    let rowsHTML = '';
+    for (const [key, data] of Object.entries(result.indicators)) {
+      const statusClass = data.signal === 'CE' ? 'bullish' :
+                          data.signal === 'PE' ? 'bearish' : 'neutral-status';
+      const statusIcon = data.signal === 'CE' ? '▲' :
+                         data.signal === 'PE' ? '▼' : '—';
+
+      rowsHTML += `
+        <div class="kp-signal-indicator-row">
+          <div class="kp-signal-indicator-name">
+            <span class="kp-signal-indicator-status ${statusClass}">${statusIcon}</span>
+            <span>${indicatorIcons[key] || '📊'} ${indicatorNames[key] || key}</span>
+          </div>
+          <span class="kp-signal-indicator-label">${data.label}</span>
+          <span class="kp-signal-indicator-value">${data.value}</span>
+        </div>
+      `;
+    }
+    indicatorContainer.innerHTML = rowsHTML;
+  }
+
+  // --- Signal History ---
+  const historyList = panel.querySelector('#kp-signal-history-list');
+  const historyCount = panel.querySelector('#kp-signal-history-count');
+
+  if (historyCount) {
+    historyCount.textContent = `${signalHistory.length} signal${signalHistory.length !== 1 ? 's' : ''}`;
+  }
+
+  if (historyList) {
+    if (signalHistory.length === 0) {
+      historyList.innerHTML = '<div class="kp-signal-history-empty">No signals yet. Collecting market data...</div>';
+    } else {
+      let html = '';
+      const displayHistory = signalHistory.slice(0, 15); // Show last 15
+      displayHistory.forEach(sig => {
+        const dirClass = sig.direction.toLowerCase();
+        html += `
+          <div class="kp-signal-history-item">
+            <span class="signal-time">${sig.time}</span>
+            <span class="signal-type ${dirClass}">BUY ${sig.direction}</span>
+            <span class="signal-strength">${sig.strength}%</span>
+            <span class="signal-price">₹${sig.price ? sig.price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</span>
+          </div>
+        `;
+      });
+      historyList.innerHTML = html;
+    }
+  }
+
+  // --- Add to Basket Button ---
+  const addBasketBtn = panel.querySelector('#kp-signal-add-basket');
+  if (addBasketBtn) {
+    if (result.direction && result.strength >= 83) {
+      addBasketBtn.disabled = false;
+      addBasketBtn.textContent = `Add BUY ${result.direction} to Express Basket`;
+    } else {
+      addBasketBtn.disabled = true;
+      addBasketBtn.textContent = 'Add Signal to Express Basket';
+    }
+  }
+}
+
+// Show a toast notification for new strong signals
+function showSignalToast(result) {
+  // Remove existing toast
+  let toast = document.querySelector('.kp-signal-toast');
+  if (toast) toast.remove();
+
+  toast = document.createElement('div');
+  toast.className = `kp-signal-toast ${result.direction.toLowerCase()}`;
+  toast.textContent = `${result.message} @ ₹${result.currentPrice ? result.currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'} (${result.strength}%)`;
+  document.body.appendChild(toast);
+
+  // Animate in
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      toast.classList.add('show');
+    });
+  });
+
+  // Auto-dismiss after 4 seconds
+  setTimeout(() => {
+    toast.classList.remove('show');
+    setTimeout(() => {
+      if (toast.parentNode) toast.remove();
+    }, 400);
+  }, 4000);
+}
+
 // Run init
 init();
+

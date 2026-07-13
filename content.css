@@ -837,3 +837,643 @@
   align-items: stretch !important;
   padding: 10px 12px 10px 12px !important;
 }
+
+/* ==========================================
+   MODULE 6: SIGNAL ENGINE PANEL
+   ========================================== */
+
+/* Floating Signal Panel */
+.kp-signal-panel {
+  position: fixed;
+  top: 72px;
+  right: 16px;
+  width: 340px;
+  max-height: calc(100vh - 100px);
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 16px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(255, 255, 255, 0.05) inset,
+    0 0 60px rgba(99, 102, 241, 0.08);
+  z-index: 99999;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  overflow: hidden;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+  animation: kpSignalSlideIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes kpSignalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.kp-signal-panel.collapsed {
+  max-height: 52px;
+  overflow: hidden;
+}
+
+/* Panel Header */
+.kp-signal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  user-select: none;
+}
+
+.kp-signal-header:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.18), rgba(139, 92, 246, 0.12));
+}
+
+.kp-signal-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kp-signal-header-left .kp-signal-icon {
+  width: 20px;
+  height: 20px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+}
+
+.kp-signal-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e2e8f0;
+  letter-spacing: -0.01em;
+}
+
+.kp-signal-header-chevron {
+  font-size: 10px;
+  color: #94a3b8;
+  transition: transform 0.3s ease;
+}
+
+.kp-signal-panel.collapsed .kp-signal-header-chevron {
+  transform: rotate(-90deg);
+}
+
+.kp-signal-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.kp-signal-header-badge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 20px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.kp-signal-header-badge.collecting {
+  background: rgba(100, 116, 139, 0.3);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+}
+
+.kp-signal-header-badge.no-signal {
+  background: rgba(100, 116, 139, 0.2);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.kp-signal-header-badge.signal-ce {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  animation: kpBadgePulse 2s ease-in-out infinite;
+}
+
+.kp-signal-header-badge.signal-pe {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  animation: kpBadgePulse 2s ease-in-out infinite;
+}
+
+.kp-signal-header-badge.signal-strong-ce {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(250, 204, 21, 0.15));
+  color: #fbbf24;
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  animation: kpBadgeGoldPulse 1.5s ease-in-out infinite;
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.5);
+}
+
+.kp-signal-header-badge.signal-strong-pe {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(250, 204, 21, 0.15));
+  color: #fbbf24;
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  animation: kpBadgeGoldPulse 1.5s ease-in-out infinite;
+  text-shadow: 0 0 8px rgba(250, 204, 21, 0.5);
+}
+
+@keyframes kpBadgePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.75; }
+}
+
+@keyframes kpBadgeGoldPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 12px rgba(250, 204, 21, 0.3); }
+  50% { opacity: 0.85; box-shadow: 0 0 20px rgba(250, 204, 21, 0.5); }
+}
+
+/* Panel Body */
+.kp-signal-body {
+  padding: 0;
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+/* Main Signal Display */
+.kp-signal-main {
+  padding: 16px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.kp-signal-main-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  border-radius: 12px;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin-bottom: 8px;
+}
+
+.kp-signal-main-badge.ce {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05));
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.15);
+}
+
+.kp-signal-main-badge.pe {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05));
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15);
+}
+
+.kp-signal-main-badge.strong {
+  border-width: 2px;
+  box-shadow: 0 4px 30px rgba(250, 204, 21, 0.2);
+  animation: kpMainBadgeGlow 2s ease-in-out infinite;
+}
+
+@keyframes kpMainBadgeGlow {
+  0%, 100% { box-shadow: 0 4px 30px rgba(250, 204, 21, 0.2); }
+  50% { box-shadow: 0 4px 40px rgba(250, 204, 21, 0.35); }
+}
+
+.kp-signal-main-badge.neutral {
+  background: rgba(51, 65, 85, 0.4);
+  color: #94a3b8;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.kp-signal-strength-bar {
+  width: 100%;
+  height: 6px;
+  background: rgba(51, 65, 85, 0.5);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.kp-signal-strength-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s ease, background 0.5s ease;
+}
+
+.kp-signal-strength-fill.ce {
+  background: linear-gradient(90deg, #059669, #34d399);
+}
+
+.kp-signal-strength-fill.pe {
+  background: linear-gradient(90deg, #dc2626, #f87171);
+}
+
+.kp-signal-strength-fill.neutral {
+  background: linear-gradient(90deg, #475569, #64748b);
+}
+
+.kp-signal-strength-label {
+  font-size: 10px;
+  color: #64748b;
+  margin-top: 4px;
+  text-align: center;
+}
+
+.kp-signal-price-info {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 8px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.kp-signal-price-info span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.kp-signal-price-info .value {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+/* Indicator Breakdown */
+.kp-signal-indicators {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.kp-signal-indicators-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.kp-signal-indicator-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.kp-signal-indicator-row:last-child {
+  border-bottom: none;
+}
+
+.kp-signal-indicator-name {
+  color: #cbd5e1;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 90px;
+}
+
+.kp-signal-indicator-status {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.kp-signal-indicator-status.bullish {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.kp-signal-indicator-status.bearish {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.kp-signal-indicator-status.neutral-status {
+  background: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.kp-signal-indicator-label {
+  font-size: 11px;
+  color: #94a3b8;
+  text-align: right;
+  flex: 1;
+  margin: 0 8px;
+}
+
+.kp-signal-indicator-value {
+  font-size: 11px;
+  color: #e2e8f0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 55px;
+  text-align: right;
+}
+
+/* Signal History Log */
+.kp-signal-history {
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.kp-signal-history-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.kp-signal-history-list {
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+.kp-signal-history-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.kp-signal-history-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.kp-signal-history-list::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+
+.kp-signal-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 8px;
+  border-radius: 6px;
+  margin-bottom: 4px;
+  font-size: 11px;
+  transition: background 0.15s ease;
+}
+
+.kp-signal-history-item:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.kp-signal-history-item .signal-time {
+  color: #64748b;
+  font-variant-numeric: tabular-nums;
+  min-width: 50px;
+}
+
+.kp-signal-history-item .signal-type {
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+.kp-signal-history-item .signal-type.ce {
+  background: rgba(16, 185, 129, 0.12);
+  color: #34d399;
+}
+
+.kp-signal-history-item .signal-type.pe {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.kp-signal-history-item .signal-strength {
+  color: #94a3b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.kp-signal-history-item .signal-price {
+  color: #cbd5e1;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.kp-signal-history-empty {
+  text-align: center;
+  padding: 16px;
+  color: #475569;
+  font-size: 11px;
+}
+
+/* Footer with Disclaimer */
+.kp-signal-footer {
+  padding: 10px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kp-signal-add-basket-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.kp-signal-add-basket-btn:hover {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+  transform: translateY(-1px);
+}
+
+.kp-signal-add-basket-btn:active {
+  transform: translateY(0);
+}
+
+.kp-signal-add-basket-btn:disabled {
+  background: #334155;
+  color: #64748b;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.kp-signal-disclaimer {
+  font-size: 9px;
+  color: #475569;
+  text-align: center;
+  line-height: 1.4;
+  padding: 4px 0;
+}
+
+/* Panel Resize Handle / Drag */
+.kp-signal-panel-drag {
+  cursor: move;
+}
+
+/* New Signal Notification Toast */
+.kp-signal-toast {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-100px);
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-family: 'Inter', -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  z-index: 999999;
+  pointer-events: none;
+  opacity: 0;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+.kp-signal-toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+.kp-signal-toast.ce {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.9), rgba(5, 150, 105, 0.9));
+  color: white;
+  border: 1px solid rgba(52, 211, 153, 0.5);
+}
+
+.kp-signal-toast.pe {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.9), rgba(220, 38, 38, 0.9));
+  color: white;
+  border: 1px solid rgba(248, 113, 113, 0.5);
+}
+
+/* Candle Progress Section */
+.kp-signal-candle-info {
+  padding: 8px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  color: #64748b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(30, 41, 59, 0.3);
+}
+
+.kp-signal-candle-info .candle-count {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.kp-signal-candle-info .candle-timeframe {
+  color: #8b5cf6;
+  font-weight: 600;
+}
+
+/* Minimize / Close Button */
+.kp-signal-close-btn {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.kp-signal-close-btn:hover {
+  color: #f87171;
+}
+
+/* Chart Arrow Overlays */
+.kp-chart-signal-arrow {
+  position: absolute;
+  font-size: 20px;
+  font-weight: 900;
+  z-index: 50;
+  pointer-events: none;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  animation: kpArrowBounce 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.kp-chart-signal-arrow.ce {
+  color: #10b981;
+}
+
+.kp-chart-signal-arrow.pe {
+  color: #ef4444;
+}
+
+@keyframes kpArrowBounce {
+  0% { opacity: 0; transform: scale(0.5) translateY(10px); }
+  60% { transform: scale(1.2) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Light theme overrides for Kite */
+body:not(.theme-dark):not(.dark) .kp-signal-panel {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: rgba(99, 102, 241, 0.15);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.08),
+    0 0 0 1px rgba(0, 0, 0, 0.04) inset;
+}
+
+body:not(.theme-dark):not(.dark) .kp-signal-header {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(139, 92, 246, 0.04));
+  border-bottom-color: rgba(0, 0, 0, 0.06);
+}
+
+body:not(.theme-dark):not(.dark) .kp-signal-header-title {
+  color: #1e293b;
+}
+
+body:not(.theme-dark):not(.dark) .kp-signal-indicator-name {
+  color: #334155;
+}
+
+body:not(.theme-dark):not(.dark) .kp-signal-indicator-value {
+  color: #1e293b;
+}
+
+body:not(.theme-dark):not(.dark) .kp-signal-indicator-label {
+  color: #64748b;
+}
+
+body:not(.theme-dark):not(.dark) .kp-signal-indicator-row {
+  border-bottom-color: rgba(0, 0, 0, 0.04);
+}
+
+body:not(.theme-dark):not(.dark) .kp-signal-candle-info {
+  background: rgba(241, 245, 249, 0.5);
+  border-bottom-color: rgba(0, 0, 0, 0.04);
+}

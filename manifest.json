@@ -28,6 +28,7 @@
         "https://kite.zerodha.com/*"
       ],
       "js": [
+        "signal-engine.js",
         "content.js"
       ],
       "css": [

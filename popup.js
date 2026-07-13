@@ -3,7 +3,8 @@ const DEFAULT_SETTINGS = {
   grouping: true,
   basket: true,
   optionchain: true,
-  charges: true
+  charges: true,
+  signals: true
 };
 
 // Elements
@@ -11,7 +12,8 @@ const toggles = {
   grouping: document.getElementById('toggle-grouping'),
   basket: document.getElementById('toggle-basket'),
   optionchain: document.getElementById('toggle-optionchain'),
-  charges: document.getElementById('toggle-charges')
+  charges: document.getElementById('toggle-charges'),
+  signals: document.getElementById('toggle-signals')
 };
 
 const openSandboxBtn = document.getElementById('open-sandbox');
