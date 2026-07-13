@@ -2644,6 +2644,18 @@ function handleSignalPanel() {
     panel = document.createElement('div');
     panel.className = 'kp-signal-panel';
     if (signalPanelCollapsed) panel.classList.add('collapsed');
+    
+    // Restore dragged position from local storage
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.get(['signalPanelTop', 'signalPanelLeft']).then(res => {
+        if (res.signalPanelTop !== undefined && res.signalPanelLeft !== undefined) {
+          panel.style.top = res.signalPanelTop;
+          panel.style.left = res.signalPanelLeft;
+          panel.style.right = 'auto';
+        }
+      });
+    }
+    
     document.body.appendChild(panel);
     renderSignalPanel(panel);
   }
@@ -2652,7 +2664,7 @@ function handleSignalPanel() {
 // Render the full signal panel structure
 function renderSignalPanel(panel) {
   panel.innerHTML = `
-    <div class="kp-signal-header" id="kp-signal-toggle">
+    <div class="kp-signal-header" id="kp-signal-toggle" style="cursor: move;">
       <div class="kp-signal-header-left">
         <div class="kp-signal-icon">📊</div>
         <span class="kp-signal-header-chevron">▼</span>
@@ -2707,15 +2719,97 @@ function renderSignalPanel(panel) {
     </div>
   `;
 
-  // Bind toggle collapse
+  // Bind drag & toggle collapse
   const toggleHeader = panel.querySelector('#kp-signal-toggle');
+  
+  let isDragging = false;
+  let dragActive = false;
+  let startX = 0, startY = 0;
+  
+  toggleHeader.addEventListener('mousedown', (e) => {
+    if (e.target.closest('button') || e.target.closest('a')) return;
+    
+    e.preventDefault();
+    dragActive = true;
+    isDragging = false;
+    startX = e.clientX;
+    startY = e.clientY;
+    
+    let pos1 = 0, pos2 = 0, pos3 = e.clientX, pos4 = e.clientY;
+    
+    function onMouseMove(moveEv) {
+      if (!dragActive) return;
+      
+      // If mouse moved more than 5px, it's a drag
+      if (Math.abs(moveEv.clientX - startX) > 5 || Math.abs(moveEv.clientY - startY) > 5) {
+        isDragging = true;
+      }
+      
+      pos1 = pos3 - moveEv.clientX;
+      pos2 = pos4 - moveEv.clientY;
+      pos3 = moveEv.clientX;
+      pos4 = moveEv.clientY;
+      
+      let newTop = panel.offsetTop - pos2;
+      let newLeft = panel.offsetLeft - pos1;
+      
+      const rect = panel.getBoundingClientRect();
+      const maxTop = window.innerHeight - (signalPanelCollapsed ? 52 : rect.height);
+      const maxLeft = window.innerWidth - rect.width;
+      
+      newTop = Math.max(0, Math.min(newTop, maxTop));
+      newLeft = Math.max(0, Math.min(newLeft, maxLeft));
+      
+      panel.style.top = newTop + 'px';
+      panel.style.left = newLeft + 'px';
+      panel.style.right = 'auto';
+    }
+    
+    function onMouseUp() {
+      dragActive = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+      
+      // Save position to storage
+      if (isDragging && typeof chrome !== 'undefined' && chrome.storage) {
+        chrome.storage.local.set({
+          signalPanelTop: panel.style.top,
+          signalPanelLeft: panel.style.left
+        });
+      }
+    }
+    
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  });
+
   toggleHeader.addEventListener('click', (e) => {
+    // If dragging occurred, do not toggle collapse
+    if (isDragging) {
+      e.stopPropagation();
+      e.preventDefault();
+      return;
+    }
     // Don't toggle if clicking close button
     if (e.target.closest('.kp-signal-close-btn')) return;
     signalPanelCollapsed = !signalPanelCollapsed;
     panel.classList.toggle('collapsed', signalPanelCollapsed);
     const chevron = panel.querySelector('.kp-signal-header-chevron');
     chevron.innerText = signalPanelCollapsed ? '▶' : '▼';
+    
+    // Bounds check after collapse resize
+    setTimeout(() => {
+      const rect = panel.getBoundingClientRect();
+      let newTop = panel.offsetTop;
+      const maxTop = window.innerHeight - (signalPanelCollapsed ? 52 : rect.height);
+      if (newTop > maxTop) {
+        newTop = Math.max(0, maxTop);
+        panel.style.top = newTop + 'px';
+        if (typeof chrome !== 'undefined' && chrome.storage) {
+          chrome.storage.local.set({ signalPanelTop: panel.style.top });
+        }
+      }
+    }, 350);
   });
 
   // Bind close button
