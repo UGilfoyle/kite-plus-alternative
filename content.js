@@ -507,12 +507,17 @@ function getAvailableMargin() {
   // Asynchronously trigger live API margin fetch
   updateMarginsFromAPI();
 
+  // If we have a valid margin fetched from API, prefer it
+  if (currentMargin > 10) {
+    return currentMargin;
+  }
+
   // 1. Try to find by ID/class first
   const marginEl = document.querySelector('.funds .margin-available, .funds-table .available, #available-margin, td.available-margin, .funds .margin-available');
   if (marginEl) {
     const txt = marginEl.textContent.replace(/[^0-9.-]/g, '');
     const val = parseFloat(txt);
-    if (!isNaN(val) && val > 0) {
+    if (!isNaN(val) && val > 10) { // Require val > 10 to avoid decimal-only fragments
       if (DEBUG) console.log(`[KitePlus Debug] Scraped Available Margin via selector: ${val}`);
       currentMargin = val;
       // Cache in local storage
@@ -532,7 +537,7 @@ function getAvailableMargin() {
         const valEl = parent.querySelector('td.bold, td:last-child, span.val, .value');
         if (valEl) {
           const val = parseFloat(valEl.innerText.replace(/[^0-9.-]/g, ''));
-          if (!isNaN(val) && val > 0) {
+          if (!isNaN(val) && val > 10) { // Require val > 10 to avoid decimal-only fragments
             if (DEBUG) console.log(`[KitePlus Debug] Scraped Available Margin via label search: ${val}`);
             currentMargin = val;
             // Cache in local storage
@@ -551,7 +556,7 @@ function getAvailableMargin() {
     if (DEBUG) console.log(`[KitePlus Debug] Using mockState Available Margin: ${window.mockState.availableMargin}`);
     currentMargin = window.mockState.availableMargin;
   }
-  return currentMargin > 0 ? currentMargin : 500000.00;
+  return currentMargin > 10 ? currentMargin : 500000.00;
 }
 
 // Scrape Used Margin from page
@@ -1918,10 +1923,11 @@ async function updateMarginsFromAPI() {
       if (json && json.status === 'success' && json.data) {
         const equity = json.data.equity;
         if (equity) {
-          const avail = parseFloat(equity.net);
-          const used = parseFloat(equity.utilised?.debits);
+          // Check both equity.net and equity.available.live_balance
+          const avail = parseFloat(equity.net) || (equity.available ? parseFloat(equity.available.live_balance) : NaN);
+          const used = parseFloat(equity.utilised?.debits) || 0;
           
-          if (!isNaN(avail) && avail > 0) {
+          if (!isNaN(avail) && avail > 10) { // Only set if valid and > 10
             currentMargin = avail;
             usedMargin = isNaN(used) ? 0 : used;
             lastApiMarginFetch = now;
