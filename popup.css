@@ -5,10 +5,32 @@
   --border-color: rgba(255, 255, 255, 0.08);
   --text-primary: #f8fafc;
   --text-secondary: #94a3b8;
-  --accent-blue: #3b82f6;
-  --accent-purple: #8b5cf6;
-  --accent-gradient: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+  --accent-blue: #387ed1;
+  --accent-purple: #5b8fd4;
+  --accent-gradient: linear-gradient(135deg, #387ed1 0%, #2b6cb8 100%);
+  --accent-glow: rgba(56, 126, 209, 0.25);
   --success: #10b981;
+}
+
+body.theme-kite {
+  --accent-blue: #387ed1;
+  --accent-purple: #5b8fd4;
+  --accent-gradient: linear-gradient(135deg, #387ed1 0%, #2b6cb8 100%);
+  --accent-glow: rgba(56, 126, 209, 0.28);
+  --bg-primary: #090d16;
+  --bg-secondary: #121826;
+  --bg-card: rgba(30, 41, 59, 0.4);
+}
+
+body.theme-upstox {
+  --accent-blue: #7c3aed;
+  --accent-purple: #a78bfa;
+  --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%);
+  --accent-glow: rgba(124, 58, 237, 0.3);
+  --bg-primary: #0c0914;
+  --bg-secondary: #161022;
+  --bg-card: rgba(55, 35, 90, 0.35);
+  --border-color: rgba(167, 139, 250, 0.12);
 }
 
 * {
@@ -48,7 +70,7 @@ header {
 }
 
 .logo-icon {
-  filter: drop-shadow(0 2px 8px rgba(59, 130, 246, 0.3));
+  filter: drop-shadow(0 2px 8px var(--accent-glow));
 }
 
 .logo-text {
@@ -75,10 +97,40 @@ header {
   color: var(--text-secondary);
 }
 
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.broker-chip {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+body.theme-kite .broker-chip {
+  color: #9ec5f0;
+  border-color: rgba(56, 126, 209, 0.45);
+  background: rgba(56, 126, 209, 0.15);
+}
+
+body.theme-upstox .broker-chip {
+  color: #d8b4fe;
+  border-color: rgba(167, 139, 250, 0.45);
+  background: rgba(124, 58, 237, 0.18);
+}
+
 /* Sandbox Banner */
 .sandbox-banner {
-  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
-  border: 1px solid rgba(99, 102, 241, 0.2);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent-blue) 12%, transparent) 0%, color-mix(in srgb, var(--accent-purple) 10%, transparent) 100%);
+  border: 1px solid color-mix(in srgb, var(--accent-blue) 28%, transparent);
   border-radius: 12px;
   padding: 14px;
   display: flex;
@@ -90,7 +142,7 @@ header {
 .sandbox-info h3 {
   font-size: 14px;
   font-weight: 600;
-  color: #a5b4fc;
+  color: var(--accent-purple);
   margin-bottom: 4px;
 }
 
@@ -115,12 +167,12 @@ header {
 .btn-primary {
   background: var(--accent-gradient);
   color: white;
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
+  box-shadow: 0 4px 12px var(--accent-glow);
 }
 
 .btn-primary:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px 16px var(--accent-glow);
 }
 
 .btn-primary:active {
@@ -226,6 +278,116 @@ input:focus + .slider {
 
 input:checked + .slider:before {
   transform: translateX(14px);
+}
+
+/* Dhan API */
+.dhan-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+}
+
+.dhan-section h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  letter-spacing: 0.8px;
+  font-weight: 600;
+}
+
+.dhan-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.dhan-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.dhan-field input {
+  font-family: inherit;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.dhan-field input:focus {
+  border-color: var(--accent-blue);
+}
+
+.dhan-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent-blue);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid transparent;
+}
+
+.btn-ghost:hover {
+  color: #f43f5e;
+}
+
+.dhan-status {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.dhan-status.ok {
+  color: var(--success);
+}
+
+.dhan-status.error {
+  color: #f43f5e;
+}
+
+.dhan-optional {
+  margin-top: 4px;
+}
+
+.dhan-optional summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 6px 0;
+}
+
+.dhan-optional[open] summary {
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.dhan-optional .dhan-field,
+.dhan-optional .dhan-actions,
+.dhan-optional .dhan-status {
+  margin-top: 8px;
 }
 
 /* Footer */

@@ -1,17 +1,101 @@
 // KitePlus Signal Engine — Multi-Indicator Confluence System
-// Computes RSI, MACD, EMA Crossover, Bollinger Bands, VWAP, Supertrend
-// and combines them into directional Buy CE / Buy PE signals.
+// Retail-buyer focused: index charts → Buy CE / Buy PE; option charts → Buy / Wait.
+// Supports NIFTY, SENSEX, BANKNIFTY, FINNIFTY and their CE/PE contracts.
+
+const TIMEFRAMES = [
+  { id: '1m', label: '1m', ms: 60 * 1000 },
+  { id: '2m', label: '2m', ms: 2 * 60 * 1000 },
+  { id: '3m', label: '3m', ms: 3 * 60 * 1000 },
+  { id: '5m', label: '5m', ms: 5 * 60 * 1000 },
+  { id: '15m', label: '15m', ms: 15 * 60 * 1000 },
+  { id: '45m', label: '45m', ms: 45 * 60 * 1000 },
+  { id: '4h', label: '4h', ms: 4 * 60 * 60 * 1000 },
+  { id: '1D', label: '1D', ms: 24 * 60 * 60 * 1000 },
+  { id: '1W', label: '1W', ms: 7 * 24 * 60 * 60 * 1000 },
+  { id: '1M', label: '1M', ms: 30 * 24 * 60 * 60 * 1000 }
+];
+
+/* ==========================================
+   INSTRUMENT CLASSIFIER
+   ========================================== */
+function classifyInstrument(rawSymbol) {
+  const raw = String(rawSymbol || '').trim().toUpperCase().replace(/\s+/g, ' ');
+  const exchange = /\b(BSE|BFO)\b/.test(raw) || /\.BO$/.test(raw) ? 'BSE' : 'NSE';
+  const symbol = raw
+    .replace(/\b(NSE_EQ|BSE_EQ|NSE|BSE|NFO|BFO)\s*[:|/-]\s*/g, '')
+    .replace(/\.(NS|BO)$/g, '')
+    .replace(/\s+(EQ|BE|BZ)$/g, '')
+    .trim();
+  const compact = symbol.replace(/\s+/g, '');
+
+  let optionType = null;
+  // Require a strike digit before CE/PE so names like RELIANCE / PIPE are not options.
+  if (/\bCE\b/.test(symbol) || /\d{4,6}CE$/.test(compact) || compact.endsWith('CALL')) {
+    optionType = 'CE';
+  } else if (/\bPE\b/.test(symbol) || /\d{4,6}PE$/.test(compact) || compact.endsWith('PUT')) {
+    optionType = 'PE';
+  }
+
+  let underlying = 'UNKNOWN';
+  if (compact.includes('BANKNIFTY') || compact.includes('BANKNIF')) {
+    underlying = 'BANKNIFTY';
+  } else if (compact.includes('FINNIFTY') || compact.includes('FINNIF')) {
+    underlying = 'FINNIFTY';
+  } else if (compact.includes('SENSEX') || compact.includes('BSX')) {
+    underlying = 'SENSEX';
+  } else if (compact.includes('NIFTY') || compact === 'NIFTY50' || compact.includes('NSEI')) {
+    underlying = 'NIFTY';
+  }
+
+  let strike = null;
+  const spacedStrike = symbol.match(/\b(\d{4,6})\s*(?:CE|PE)\b/i);
+  const compactStrike = compact.match(/(\d{5})(CE|PE)$/i) || compact.match(/(\d{4})(CE|PE)$/i) ||
+    compact.match(/(\d{4,6})(CE|PE)$/i);
+  if (spacedStrike) strike = parseInt(spacedStrike[1], 10);
+  else if (compactStrike) strike = parseInt(compactStrike[1], 10);
+
+  // Kite option names like NIFTY25JUL24400PE — treat as option even if strike parse is soft.
+  if (!optionType && /^(NIFTY|BANKNIFTY|FINNIFTY|SENSEX).+\d{4,6}(CE|PE)$/.test(compact)) {
+    optionType = compact.endsWith('CE') ? 'CE' : 'PE';
+    const m = compact.match(/(\d{4,6})(CE|PE)$/);
+    if (m) strike = parseInt(m[1], 10);
+  }
+
+  const looksLikeEquity = !optionType &&
+    underlying === 'UNKNOWN' &&
+    /^[A-Z0-9&._ -]{1,40}$/.test(symbol) &&
+    /[A-Z]/.test(symbol);
+  const finalKind = optionType
+    ? 'option'
+    : (['NIFTY', 'SENSEX', 'BANKNIFTY', 'FINNIFTY'].includes(underlying)
+      ? 'index'
+      : (looksLikeEquity ? 'equity' : 'other'));
+
+  return {
+    symbol: symbol || '—',
+    underlying: underlying === 'UNKNOWN' && optionType ? 'INDEX' : underlying,
+    optionType,
+    strike,
+    exchange: optionType ? (exchange === 'BSE' ? 'BFO' : 'NFO') : exchange,
+    yahooSymbol: finalKind === 'equity'
+      ? `${symbol.replace(/\s+/g, '-')}.${exchange === 'BSE' ? 'BO' : 'NS'}`
+      : null,
+    kind: finalKind,
+    supported: ['index', 'option', 'equity'].includes(finalKind)
+  };
+}
 
 /* ==========================================
    CANDLE COLLECTOR
    Builds OHLC candles from tick-level price data
    ========================================== */
 class CandleCollector {
-  constructor(intervalMs = 5 * 60 * 1000) {
-    this.intervalMs = intervalMs;  // default 5-minute candles
+  constructor(intervalMs = 2 * 60 * 1000) {
+    this.intervalMs = intervalMs;
     this.candles = [];
     this.currentCandle = null;
-    this.tickVolume = 0;  // simulated volume from tick count
+    this.tickVolume = 0;
+    this.symbol = null;
   }
 
   addTick(price, timestamp = Date.now()) {
@@ -20,13 +104,11 @@ class CandleCollector {
     const candleStart = Math.floor(timestamp / this.intervalMs) * this.intervalMs;
 
     if (!this.currentCandle || this.currentCandle.startTime !== candleStart) {
-      // Close previous candle
       if (this.currentCandle) {
         this.currentCandle.complete = true;
         this.candles.push({ ...this.currentCandle });
       }
 
-      // Start new candle
       this.currentCandle = {
         startTime: candleStart,
         open: price,
@@ -39,7 +121,6 @@ class CandleCollector {
       this.tickVolume = 0;
     }
 
-    // Update current candle
     this.currentCandle.high = Math.max(this.currentCandle.high, price);
     this.currentCandle.low = Math.min(this.currentCandle.low, price);
     this.currentCandle.close = price;
@@ -47,7 +128,6 @@ class CandleCollector {
     this.currentCandle.volume = this.tickVolume;
   }
 
-  // Get all completed candles + the current in-progress candle
   getAllCandles() {
     const all = [...this.candles];
     if (this.currentCandle) {
@@ -60,7 +140,6 @@ class CandleCollector {
     return [...this.candles];
   }
 
-  // Keep memory bounded — retain last N candles
   trim(maxCandles = 500) {
     if (this.candles.length > maxCandles) {
       this.candles = this.candles.slice(-maxCandles);
@@ -71,14 +150,36 @@ class CandleCollector {
     return this.candles.length + (this.currentCandle ? 1 : 0);
   }
 
+  reset() {
+    this.candles = [];
+    this.currentCandle = null;
+    this.tickVolume = 0;
+  }
+
+  seedCandles(candles) {
+    if (!Array.isArray(candles)) return;
+    this.candles = candles
+      .filter(c => c && Number(c.close) > 0)
+      .map(c => ({ ...c, complete: true }))
+      .slice(-500);
+    this.currentCandle = null;
+    this.tickVolume = 0;
+  }
+
   setInterval(intervalMs) {
-    // Changing interval resets all collected data
     if (intervalMs !== this.intervalMs) {
       this.intervalMs = intervalMs;
-      this.candles = [];
-      this.currentCandle = null;
-      this.tickVolume = 0;
+      this.reset();
     }
+  }
+
+  setSymbol(symbol) {
+    if (this.symbol !== symbol) {
+      this.symbol = symbol;
+      this.reset();
+      return true;
+    }
+    return false;
   }
 }
 
@@ -352,256 +453,640 @@ function computeSupertrend(candles, period = 10, multiplier = 3) {
 }
 
 /* ==========================================
-   SIGNAL GENERATOR — Confluence Engine
+   TRADE MODES — Scalp vs Intraday
    ========================================== */
-function generateSignals(candles) {
-  if (candles.length < 35) {
-    // Need at least ~35 candles for MACD(26+9) to produce valid values
+const TRADE_MODES = {
+  scalp: {
+    id: 'scalp',
+    label: 'Scalp',
+    minCandles: 6,
+    rsiPeriod: 5,
+    macdFast: 3, macdSlow: 8, macdSignal: 3,
+    emaFast: 2, emaSlow: 5,
+    bbPeriod: 8,
+    stPeriod: 4, stMult: 1.5,
+    momBars: 2,
+    bodyBars: 2,
+    structureBars: 4,
+    strongAt: 70,
+    actionableAt: 58,
+    leanAt: 46,
+    biasMin: 46,
+    edgeMin: 0.35,
+    chopEdge: 0.35,
+    preferredTf: '1m',
+    momBoost: 1.4
+  },
+  microScalp: {
+    id: 'microScalp',
+    label: 'Micro',
+    minCandles: 4,
+    rsiPeriod: 3,
+    macdFast: 2, macdSlow: 5, macdSignal: 2,
+    emaFast: 2, emaSlow: 4,
+    bbPeriod: 6,
+    stPeriod: 3, stMult: 1.2,
+    momBars: 2,
+    bodyBars: 2,
+    structureBars: 3,
+    strongAt: 68,
+    actionableAt: 55,
+    leanAt: 44,
+    biasMin: 44,
+    edgeMin: 0.30,
+    chopEdge: 0.30,
+    preferredTf: '1m',
+    momBoost: 1.6
+  },
+  intraday: {
+    id: 'intraday',
+    label: 'Intraday',
+    minCandles: 12,
+    rsiPeriod: 10,
+    macdFast: 6, macdSlow: 13, macdSignal: 5,
+    emaFast: 5, emaSlow: 13,
+    bbPeriod: 20,
+    stPeriod: 7, stMult: 2.5,
+    momBars: 5,
+    bodyBars: 5,
+    structureBars: 8,
+    strongAt: 78,
+    actionableAt: 65,
+    leanAt: 52,
+    biasMin: 52,
+    edgeMin: 0.50,
+    chopEdge: 0.55,
+    preferredTf: '15m',
+    momBoost: 1.0
+  }
+};
+
+const MIN_CANDLES = TRADE_MODES.intraday.minCandles;
+
+function getModeProfile(modeId) {
+  return TRADE_MODES[modeId] || TRADE_MODES.intraday;
+}
+
+function lastValid(arr) {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (arr[i] !== null && arr[i] !== undefined && !isNaN(arr[i])) return { value: arr[i], index: i };
+  }
+  return null;
+}
+
+function slope(values, lookback = 3) {
+  const pts = [];
+  for (let i = values.length - 1; i >= 0 && pts.length < lookback + 1; i--) {
+    if (values[i] !== null && values[i] !== undefined) pts.unshift(values[i]);
+  }
+  if (pts.length < 2) return 0;
+  return (pts[pts.length - 1] - pts[0]) / (pts.length - 1);
+}
+
+function momentumPct(closes, bars = 5) {
+  if (closes.length <= bars) return 0;
+  const a = closes[closes.length - 1];
+  const b = closes[closes.length - 1 - bars];
+  if (!b) return 0;
+  return ((a - b) / b) * 100;
+}
+
+function candleBodyBias(candles, n = 5) {
+  const slice = candles.slice(-n);
+  let up = 0, down = 0;
+  slice.forEach(c => {
+    if (c.close >= c.open) up++;
+    else down++;
+  });
+  return { up, down, score: (up - down) / Math.max(1, slice.length) };
+}
+
+/* ==========================================
+   SIGNAL GENERATOR — Weighted AI Confluence
+   Modes: scalp (12 bars, faster) | intraday (20 bars)
+   ========================================== */
+function generateSignals(candles, context = {}) {
+  const instrument = context.kind
+    ? context
+    : classifyInstrument(context.symbol || '');
+  const mode = getModeProfile(context.mode || 'intraday');
+  const minNeed = Math.max(4, Number(context.minCandles) || mode.minCandles);
+
+  if (candles.length < minNeed) {
     return {
       direction: null,
+      action: 'WAIT',
       strength: 0,
       indicators: {},
-      message: `Collecting data... (${candles.length}/35 candles)`,
-      timestamp: Date.now()
+      message: `Collecting… (${candles.length}/${minNeed})`,
+      instrument,
+      mode: mode.id,
+      thresholds: {
+        strongAt: mode.strongAt,
+        actionableAt: mode.actionableAt,
+        leanAt: mode.leanAt,
+        minCandles: minNeed
+      },
+      brain: null,
+      timestamp: Date.now(),
+      candleCount: candles.length
     };
   }
 
   const closes = candles.map(c => c.close);
   const lastIdx = closes.length - 1;
   const prevIdx = lastIdx - 1;
+  const currentClose = closes[lastIdx];
+  const prevClose = closes[prevIdx];
 
-  // --- Compute all indicators ---
-  const rsiValues = computeRSI(closes, 14);
-  const macd = computeMACD(closes, 12, 26, 9);
-  const ema9 = computeEMA(closes, 9);
-  const ema21 = computeEMA(closes, 21);
-  const bb = computeBollingerBands(closes, 20, 2);
+  const rsiPeriod = mode.rsiPeriod;
+  const macdFast = mode.macdFast, macdSlow = mode.macdSlow, macdSignal = mode.macdSignal;
+  const emaFastP = mode.emaFast, emaSlowP = mode.emaSlow;
+  const bbPeriod = Math.min(mode.bbPeriod, candles.length);
+  const stPeriod = mode.stPeriod;
+
+  const rsiValues = computeRSI(closes, rsiPeriod);
+  const macd = computeMACD(closes, macdFast, macdSlow, macdSignal);
+  const emaFast = computeEMA(closes, emaFastP);
+  const emaSlow = computeEMA(closes, emaSlowP);
+  const bb = computeBollingerBands(closes, bbPeriod, 2);
   const vwap = computeVWAP(candles);
-  const st = computeSupertrend(candles, 10, 3);
+  const st = computeSupertrend(candles, stPeriod, mode.stMult);
 
-  // --- Evaluate each indicator ---
   const indicators = {};
-  let bullishCount = 0;
-  let bearishCount = 0;
+  let bullScore = 0;
+  let bearScore = 0;
+  let maxScore = 0;
 
-  // 1. RSI
-  const rsiCurrent = rsiValues[lastIdx];
-  if (rsiCurrent !== null && rsiCurrent !== undefined) {
-    if (rsiCurrent < 30) {
-      indicators.rsi = { value: rsiCurrent.toFixed(1), signal: 'CE', label: 'Oversold (<30)' };
-      bullishCount++;
-    } else if (rsiCurrent > 70) {
-      indicators.rsi = { value: rsiCurrent.toFixed(1), signal: 'PE', label: 'Overbought (>70)' };
-      bearishCount++;
-    } else if (rsiCurrent < 45) {
-      // Near oversold zone — slight bullish lean
-      indicators.rsi = { value: rsiCurrent.toFixed(1), signal: 'CE', label: 'Bullish zone (<45)' };
-      bullishCount++;
-    } else if (rsiCurrent > 55) {
-      // Near overbought zone — slight bearish lean
-      indicators.rsi = { value: rsiCurrent.toFixed(1), signal: 'PE', label: 'Bearish zone (>55)' };
-      bearishCount++;
-    } else {
-      indicators.rsi = { value: rsiCurrent.toFixed(1), signal: 'NEUTRAL', label: 'Neutral (45-55)' };
-    }
-  } else {
-    indicators.rsi = { value: '—', signal: 'NEUTRAL', label: 'Insufficient data' };
+  function vote(key, signal, weight, value, label) {
+    maxScore += weight;
+    indicators[key] = { value, signal, label, weight };
+    if (signal === 'CE') bullScore += weight;
+    else if (signal === 'PE') bearScore += weight;
   }
 
-  // 2. MACD Crossover
+  const rsiCur = rsiValues[lastIdx];
+  const rsiSlope = slope(rsiValues, mode.id === 'scalp' ? 2 : 3);
+  if (rsiCur != null) {
+    if (rsiCur < 28) vote('rsi', 'CE', 1.4, rsiCur.toFixed(1), 'Oversold bounce zone');
+    else if (rsiCur > 72) vote('rsi', 'PE', 1.4, rsiCur.toFixed(1), 'Overbought fade zone');
+    else if (rsiCur < 45 && rsiSlope > 0) vote('rsi', 'CE', 1.1, rsiCur.toFixed(1), 'Rising from weak zone');
+    else if (rsiCur > 55 && rsiSlope < 0) vote('rsi', 'PE', 1.1, rsiCur.toFixed(1), 'Falling from strong zone');
+    else if (rsiCur < 45) vote('rsi', 'CE', 0.7, rsiCur.toFixed(1), 'Bullish lean');
+    else if (rsiCur > 55) vote('rsi', 'PE', 0.7, rsiCur.toFixed(1), 'Bearish lean');
+    else vote('rsi', 'NEUTRAL', 0.5, rsiCur.toFixed(1), 'Mid-range');
+  } else {
+    vote('rsi', 'NEUTRAL', 0.3, '—', 'Warming up');
+  }
+
   const macdCurr = macd.macdLine[lastIdx];
   const macdPrev = macd.macdLine[prevIdx];
   const sigCurr = macd.signalLine[lastIdx];
   const sigPrev = macd.signalLine[prevIdx];
-
-  if (macdCurr !== null && sigCurr !== null && macdPrev !== null && sigPrev !== null) {
+  if (macdCurr != null && sigCurr != null && macdPrev != null && sigPrev != null) {
     const crossUp = macdPrev <= sigPrev && macdCurr > sigCurr;
     const crossDown = macdPrev >= sigPrev && macdCurr < sigCurr;
-    const aboveSignal = macdCurr > sigCurr;
-    const belowSignal = macdCurr < sigCurr;
-
-    if (crossUp) {
-      indicators.macd = { value: macdCurr.toFixed(2), signal: 'CE', label: 'Bullish crossover ↑' };
-      bullishCount++;
-    } else if (crossDown) {
-      indicators.macd = { value: macdCurr.toFixed(2), signal: 'PE', label: 'Bearish crossover ↓' };
-      bearishCount++;
-    } else if (aboveSignal) {
-      indicators.macd = { value: macdCurr.toFixed(2), signal: 'CE', label: 'Above signal line' };
-      bullishCount++;
-    } else if (belowSignal) {
-      indicators.macd = { value: macdCurr.toFixed(2), signal: 'PE', label: 'Below signal line' };
-      bearishCount++;
-    } else {
-      indicators.macd = { value: macdCurr.toFixed(2), signal: 'NEUTRAL', label: 'At signal line' };
-    }
+    const crossW = mode.id === 'scalp' ? 1.9 : 1.6;
+    if (crossUp) vote('macd', 'CE', crossW, macdCurr.toFixed(2), 'Bullish cross');
+    else if (crossDown) vote('macd', 'PE', crossW, macdCurr.toFixed(2), 'Bearish cross');
+    else if (macdCurr > sigCurr && macdCurr > macdPrev) vote('macd', 'CE', 1.1, macdCurr.toFixed(2), 'Expanding bull');
+    else if (macdCurr < sigCurr && macdCurr < macdPrev) vote('macd', 'PE', 1.1, macdCurr.toFixed(2), 'Expanding bear');
+    else if (macdCurr > sigCurr) vote('macd', 'CE', 0.8, macdCurr.toFixed(2), 'Above signal');
+    else if (macdCurr < sigCurr) vote('macd', 'PE', 0.8, macdCurr.toFixed(2), 'Below signal');
+    else vote('macd', 'NEUTRAL', 0.4, macdCurr.toFixed(2), 'Flat');
   } else {
-    indicators.macd = { value: '—', signal: 'NEUTRAL', label: 'Insufficient data' };
+    vote('macd', 'NEUTRAL', 0.3, '—', 'Warming up');
   }
 
-  // 3. EMA 9/21 Crossover
-  const ema9Curr = ema9[lastIdx];
-  const ema9Prev = ema9[prevIdx];
-  const ema21Curr = ema21[lastIdx];
-  const ema21Prev = ema21[prevIdx];
-
-  if (ema9Curr !== null && ema21Curr !== null && ema9Prev !== null && ema21Prev !== null) {
-    const crossUp = ema9Prev <= ema21Prev && ema9Curr > ema21Curr;
-    const crossDown = ema9Prev >= ema21Prev && ema9Curr < ema21Curr;
-    const above = ema9Curr > ema21Curr;
-
-    if (crossUp) {
-      indicators.ema = { value: `${ema9Curr.toFixed(1)}/${ema21Curr.toFixed(1)}`, signal: 'CE', label: 'Golden cross ↑' };
-      bullishCount++;
-    } else if (crossDown) {
-      indicators.ema = { value: `${ema9Curr.toFixed(1)}/${ema21Curr.toFixed(1)}`, signal: 'PE', label: 'Death cross ↓' };
-      bearishCount++;
-    } else if (above) {
-      indicators.ema = { value: `${ema9Curr.toFixed(1)}/${ema21Curr.toFixed(1)}`, signal: 'CE', label: 'EMA9 > EMA21' };
-      bullishCount++;
-    } else {
-      indicators.ema = { value: `${ema9Curr.toFixed(1)}/${ema21Curr.toFixed(1)}`, signal: 'PE', label: 'EMA9 < EMA21' };
-      bearishCount++;
-    }
+  const eF = emaFast[lastIdx], eFp = emaFast[prevIdx];
+  const eS = emaSlow[lastIdx], eSp = emaSlow[prevIdx];
+  if (eF != null && eS != null && eFp != null && eSp != null) {
+    const crossUp = eFp <= eSp && eF > eS;
+    const crossDown = eFp >= eSp && eF < eS;
+    const sep = Math.abs(eF - eS) / currentClose * 100;
+    const emaLabel = `EMA${emaFastP}/${emaSlowP}`;
+    if (crossUp) vote('ema', 'CE', 1.5, `${eF.toFixed(1)}/${eS.toFixed(1)}`, `${emaLabel} golden`);
+    else if (crossDown) vote('ema', 'PE', 1.5, `${eF.toFixed(1)}/${eS.toFixed(1)}`, `${emaLabel} death`);
+    else if (eF > eS && slope(emaFast, 3) > 0) vote('ema', 'CE', 1.0 + Math.min(0.4, sep * 0.2), `${eF.toFixed(1)}/${eS.toFixed(1)}`, 'Uptrend stack');
+    else if (eF < eS && slope(emaFast, 3) < 0) vote('ema', 'PE', 1.0 + Math.min(0.4, sep * 0.2), `${eF.toFixed(1)}/${eS.toFixed(1)}`, 'Downtrend stack');
+    else if (eF > eS) vote('ema', 'CE', 0.7, `${eF.toFixed(1)}/${eS.toFixed(1)}`, `${emaLabel} bull`);
+    else vote('ema', 'PE', 0.7, `${eF.toFixed(1)}/${eS.toFixed(1)}`, `${emaLabel} bear`);
   } else {
-    indicators.ema = { value: '—', signal: 'NEUTRAL', label: 'Insufficient data' };
+    vote('ema', 'NEUTRAL', 0.3, '—', 'Warming up');
   }
 
-  // 4. Bollinger Bands
-  const bbUpper = bb.upper[lastIdx];
-  const bbLower = bb.lower[lastIdx];
-  const bbMiddle = bb.middle[lastIdx];
-  const currentClose = closes[lastIdx];
-  const prevClose = closes[prevIdx];
-
-  if (bbUpper !== null && bbLower !== null) {
-    const bbWidth = bbUpper - bbLower;
-    const positionInBand = bbWidth > 0 ? (currentClose - bbLower) / bbWidth : 0.5;
-
-    if (currentClose <= bbLower && currentClose > prevClose) {
-      // Touched lower band + reversal candle → bullish
-      indicators.bb = { value: positionInBand.toFixed(2), signal: 'CE', label: 'Lower band bounce ↑' };
-      bullishCount++;
-    } else if (currentClose >= bbUpper && currentClose < prevClose) {
-      // Touched upper band + reversal candle → bearish
-      indicators.bb = { value: positionInBand.toFixed(2), signal: 'PE', label: 'Upper band rejection ↓' };
-      bearishCount++;
-    } else if (positionInBand < 0.3) {
-      indicators.bb = { value: positionInBand.toFixed(2), signal: 'CE', label: 'Near lower band' };
-      bullishCount++;
-    } else if (positionInBand > 0.7) {
-      indicators.bb = { value: positionInBand.toFixed(2), signal: 'PE', label: 'Near upper band' };
-      bearishCount++;
-    } else {
-      indicators.bb = { value: positionInBand.toFixed(2), signal: 'NEUTRAL', label: 'Mid-band range' };
-    }
+  const bbU = bb.upper[lastIdx], bbL = bb.lower[lastIdx], bbM = bb.middle[lastIdx];
+  if (bbU != null && bbL != null) {
+    const width = bbU - bbL;
+    const pos = width > 0 ? (currentClose - bbL) / width : 0.5;
+    const squeeze = bbM ? width / bbM : 0;
+    if (currentClose <= bbL && currentClose > prevClose) vote('bb', 'CE', 1.5, pos.toFixed(2), 'Lower band bounce');
+    else if (currentClose >= bbU && currentClose < prevClose) vote('bb', 'PE', 1.5, pos.toFixed(2), 'Upper band reject');
+    else if (pos < 0.25) vote('bb', 'CE', 1.0, pos.toFixed(2), 'Near lower band');
+    else if (pos > 0.75) vote('bb', 'PE', 1.0, pos.toFixed(2), 'Near upper band');
+    else if (squeeze < 0.01 && currentClose > bbM) vote('bb', 'CE', 0.9, pos.toFixed(2), 'Squeeze break up');
+    else if (squeeze < 0.01 && currentClose < bbM) vote('bb', 'PE', 0.9, pos.toFixed(2), 'Squeeze break down');
+    else vote('bb', 'NEUTRAL', 0.4, pos.toFixed(2), 'Mid-band');
   } else {
-    indicators.bb = { value: '—', signal: 'NEUTRAL', label: 'Insufficient data' };
+    vote('bb', 'NEUTRAL', 0.3, '—', 'Warming up');
   }
 
-  // 5. VWAP
-  const vwapCurrent = vwap[lastIdx];
-  const vwapPrev = vwap[prevIdx];
-
-  if (vwapCurrent !== undefined && vwapPrev !== undefined) {
-    const crossAbove = prevClose <= vwapPrev && currentClose > vwapCurrent;
-    const crossBelow = prevClose >= vwapPrev && currentClose < vwapCurrent;
-    const aboveVwap = currentClose > vwapCurrent;
-
-    if (crossAbove) {
-      indicators.vwap = { value: vwapCurrent.toFixed(1), signal: 'CE', label: 'Crossed above VWAP ↑' };
-      bullishCount++;
-    } else if (crossBelow) {
-      indicators.vwap = { value: vwapCurrent.toFixed(1), signal: 'PE', label: 'Crossed below VWAP ↓' };
-      bearishCount++;
-    } else if (aboveVwap) {
-      indicators.vwap = { value: vwapCurrent.toFixed(1), signal: 'CE', label: 'Above VWAP' };
-      bullishCount++;
-    } else {
-      indicators.vwap = { value: vwapCurrent.toFixed(1), signal: 'PE', label: 'Below VWAP' };
-      bearishCount++;
-    }
+  const vwapCur = vwap[lastIdx], vwapPrev = vwap[prevIdx];
+  if (vwapCur != null && vwapPrev != null) {
+    const dist = ((currentClose - vwapCur) / vwapCur) * 100;
+    const firmDist = mode.id === 'scalp' ? 0.08 : 0.15;
+    if (prevClose <= vwapPrev && currentClose > vwapCur) vote('vwap', 'CE', 1.4, vwapCur.toFixed(1), 'VWAP reclaim');
+    else if (prevClose >= vwapPrev && currentClose < vwapCur) vote('vwap', 'PE', 1.4, vwapCur.toFixed(1), 'VWAP lost');
+    else if (currentClose > vwapCur && dist > firmDist) vote('vwap', 'CE', 1.0, vwapCur.toFixed(1), 'Firmly above VWAP');
+    else if (currentClose < vwapCur && dist < -firmDist) vote('vwap', 'PE', 1.0, vwapCur.toFixed(1), 'Firmly below VWAP');
+    else if (currentClose > vwapCur) vote('vwap', 'CE', 0.7, vwapCur.toFixed(1), 'Above VWAP');
+    else vote('vwap', 'PE', 0.7, vwapCur.toFixed(1), 'Below VWAP');
   } else {
-    indicators.vwap = { value: '—', signal: 'NEUTRAL', label: 'Insufficient data' };
+    vote('vwap', 'NEUTRAL', 0.3, '—', 'Warming up');
   }
 
-  // 6. Supertrend
   if (st.direction && st.direction.length > 0) {
     const stDir = st.direction[st.direction.length - 1];
     const stPrev = st.direction.length > 1 ? st.direction[st.direction.length - 2] : stDir;
     const stVal = st.values[st.values.length - 1];
-
-    const flipBullish = stPrev === -1 && stDir === 1;
-    const flipBearish = stPrev === 1 && stDir === -1;
-
-    if (flipBullish) {
-      indicators.supertrend = { value: stVal ? stVal.toFixed(1) : '—', signal: 'CE', label: 'Flipped BULLISH 🟢' };
-      bullishCount++;
-    } else if (flipBearish) {
-      indicators.supertrend = { value: stVal ? stVal.toFixed(1) : '—', signal: 'PE', label: 'Flipped BEARISH 🔴' };
-      bearishCount++;
-    } else if (stDir === 1) {
-      indicators.supertrend = { value: stVal ? stVal.toFixed(1) : '—', signal: 'CE', label: 'Bullish trend' };
-      bullishCount++;
-    } else if (stDir === -1) {
-      indicators.supertrend = { value: stVal ? stVal.toFixed(1) : '—', signal: 'PE', label: 'Bearish trend' };
-      bearishCount++;
-    } else {
-      indicators.supertrend = { value: '—', signal: 'NEUTRAL', label: 'Calculating...' };
-    }
+    const v = stVal != null ? stVal.toFixed(1) : '—';
+    const flipW = mode.id === 'scalp' ? 2.0 : 1.7;
+    if (stPrev === -1 && stDir === 1) vote('supertrend', 'CE', flipW, v, 'Flip bullish');
+    else if (stPrev === 1 && stDir === -1) vote('supertrend', 'PE', flipW, v, 'Flip bearish');
+    else if (stDir === 1) vote('supertrend', 'CE', 1.0, v, 'Bullish trend');
+    else if (stDir === -1) vote('supertrend', 'PE', 1.0, v, 'Bearish trend');
+    else vote('supertrend', 'NEUTRAL', 0.3, '—', 'Flat');
   } else {
-    indicators.supertrend = { value: '—', signal: 'NEUTRAL', label: 'Insufficient data' };
+    vote('supertrend', 'NEUTRAL', 0.3, '—', 'Warming up');
   }
 
-  // --- Confluence Score ---
-  const totalIndicators = 6;
-  const activeCount = bullishCount + bearishCount;
+  const mom = momentumPct(closes, mode.momBars);
+  const bodies = candleBodyBias(candles, mode.bodyBars);
+  let brainBull = 0;
+  let brainBear = 0;
+  const momGate = mode.id === 'scalp' ? 0.06 : 0.12;
+
+  if (mom > momGate) brainBull += Math.min(1.4, mom * 4) * mode.momBoost;
+  else if (mom < -momGate) brainBear += Math.min(1.4, Math.abs(mom) * 4) * mode.momBoost;
+
+  if (bodies.score > 0.15) brainBull += bodies.score * (mode.id === 'scalp' ? 1.2 : 1);
+  else if (bodies.score < -0.15) brainBear += Math.abs(bodies.score) * (mode.id === 'scalp' ? 1.2 : 1);
+
+  const recent = closes.slice(-mode.structureBars);
+  if (recent.length >= Math.min(4, mode.structureBars - 1)) {
+    const hh = recent[recent.length - 1] > Math.max(...recent.slice(0, -1));
+    const ll = recent[recent.length - 1] < Math.min(...recent.slice(0, -1));
+    if (hh) brainBull += mode.id === 'scalp' ? 0.8 : 0.6;
+    if (ll) brainBear += mode.id === 'scalp' ? 0.8 : 0.6;
+  }
+
+  bullScore += brainBull;
+  bearScore += brainBear;
+  maxScore += 2.5;
+
+  const totalSide = bullScore + bearScore;
+  const agreement = totalSide > 0 ? Math.max(bullScore, bearScore) / totalSide : 0.5;
+  const dominance = maxScore > 0 ? Math.max(bullScore, bearScore) / maxScore : 0;
+
+  let strength = Math.round(Math.min(100, (dominance * 0.65 + agreement * 0.35) * 100));
+  const edge = Math.abs(bullScore - bearScore);
+  if (edge < mode.chopEdge) strength = Math.min(strength, mode.leanAt);
+
+  // Real technical bias only — no soft fake lean that fired BUY on noise
+  let bias = null;
+  if (bullScore > bearScore && strength >= mode.biasMin && edge >= mode.edgeMin) bias = 'bullish';
+  else if (bearScore > bullScore && strength >= mode.biasMin && edge >= mode.edgeMin) bias = 'bearish';
+
+  // Flat / synthetic bars (near-zero range) → never BUY
+  const closeMin = Math.min(...closes);
+  const closeMax = Math.max(...closes);
+  const rangePct = closeMin > 0 ? ((closeMax - closeMin) / closeMin) * 100 : 0;
+  const dataQuality = rangePct >= (mode.id === 'scalp' ? 0.15 : 0.25);
+  if (!dataQuality) {
+    bias = null;
+    strength = Math.min(strength, mode.leanAt - 1);
+  }
+
+  const bullishCount = Math.round((bullScore / Math.max(maxScore, 1)) * 6);
+  const bearishCount = Math.round((bearScore / Math.max(maxScore, 1)) * 6);
+
+  const isStrong = strength >= mode.strongAt;
+  const isActionable = strength >= mode.actionableAt;
+  const isWeak = strength >= mode.leanAt && strength < mode.actionableAt;
+
   let direction = null;
-  let strength = 0;
+  let action = null;
   let message = '';
 
-  if (bullishCount >= 5) {
-    direction = 'CE';
-    strength = Math.round((bullishCount / totalIndicators) * 100);
-    message = bullishCount === 6 ? '🔥 STRONG BUY CE' : '⚡ BUY CE';
-  } else if (bearishCount >= 5) {
-    direction = 'PE';
-    strength = Math.round((bearishCount / totalIndicators) * 100);
-    message = bearishCount === 6 ? '🔥 STRONG BUY PE' : '⚡ BUY PE';
-  } else if (bullishCount === 4) {
-    direction = 'CE';
-    strength = Math.round((bullishCount / totalIndicators) * 100);
-    message = '⚠️ Weak CE bias';
-  } else if (bearishCount === 4) {
-    direction = 'PE';
-    strength = Math.round((bearishCount / totalIndicators) * 100);
-    message = '⚠️ Weak PE bias';
+  const brain = {
+    momentum: Number(mom.toFixed(3)),
+    candleBias: Number(bodies.score.toFixed(2)),
+    bullScore: Number(bullScore.toFixed(2)),
+    bearScore: Number(bearScore.toFixed(2)),
+    agreement: Number(agreement.toFixed(2)),
+    edge: Number(edge.toFixed(2)),
+    rangePct: Number(rangePct.toFixed(3)),
+    dataQuality,
+    minCandles: minNeed,
+    mode: mode.id
+  };
+
+  const thresholds = {
+    strongAt: mode.strongAt,
+    actionableAt: mode.actionableAt,
+    leanAt: mode.leanAt,
+    minCandles: minNeed
+  };
+
+  if (instrument.kind === 'option' && instrument.optionType) {
+    const opt = instrument.optionType;
+    const strikeBit = instrument.strike ? ` ${instrument.strike}` : '';
+    const name = `${instrument.underlying && instrument.underlying !== 'UNKNOWN' && instrument.underlying !== 'INDEX' ? instrument.underlying + ' ' : ''}${opt}${strikeBit}`.trim();
+    if (bias === 'bullish' && isActionable && dataQuality) {
+      direction = opt;
+      action = 'BUY';
+      message = isStrong ? `STRONG BUY ${name}` : `BUY ${name}`;
+    } else if (bias === 'bullish' && isWeak && dataQuality) {
+      direction = opt;
+      action = 'WAIT';
+      message = `Lean bullish ${name} — wait ≥${mode.actionableAt}%`;
+    } else if (bias === 'bearish') {
+      direction = opt;
+      action = 'WAIT';
+      message = `WAIT — ${name} premium soft`;
+    } else if (!dataQuality) {
+      direction = null;
+      action = 'WAIT';
+      message = 'WAIT — need real price movement';
+    } else {
+      direction = null;
+      action = 'WAIT';
+      message = 'WAIT — no clear edge';
+    }
   } else {
-    direction = null;
-    strength = Math.round((Math.max(bullishCount, bearishCount) / totalIndicators) * 100);
-    message = '— No clear signal';
+    const und = instrument.underlying && instrument.underlying !== 'UNKNOWN'
+      ? instrument.underlying
+      : 'INDEX';
+    if (bias === 'bullish' && isActionable && dataQuality) {
+      direction = 'CE';
+      action = 'BUY';
+      message = isStrong ? `STRONG BUY ${und} CE` : `BUY ${und} CE`;
+    } else if (bias === 'bearish' && isActionable && dataQuality) {
+      direction = 'PE';
+      action = 'BUY';
+      message = isStrong ? `STRONG BUY ${und} PE` : `BUY ${und} PE`;
+    } else if (bias === 'bullish' && isWeak && dataQuality) {
+      direction = 'CE';
+      action = 'WAIT';
+      message = `Lean CE — wait ≥${mode.actionableAt}%`;
+    } else if (bias === 'bearish' && isWeak && dataQuality) {
+      direction = 'PE';
+      action = 'WAIT';
+      message = `Lean PE — wait ≥${mode.actionableAt}%`;
+    } else if (!dataQuality) {
+      direction = null;
+      action = 'WAIT';
+      message = 'WAIT — need real price movement';
+    } else {
+      direction = null;
+      action = 'WAIT';
+      message = 'WAIT — no clear edge';
+    }
   }
 
   return {
     direction,
+    action,
+    bias,
     strength,
     bullishCount,
     bearishCount,
     indicators,
     message,
-    currentPrice: closes[lastIdx],
-    timestamp: Date.now()
+    instrument,
+    mode: mode.id,
+    thresholds,
+    brain,
+    currentPrice: currentClose,
+    timestamp: Date.now(),
+    candleCount: candles.length
   };
 }
 
-// Export for content script usage — attach to window for cross-file access
+/* ==========================================
+   CSV PARSER — time,open,high,low,close[,volume]
+   ========================================== */
+function parseCandleCSV(text) {
+  if (!text || typeof text !== 'string') {
+    return { candles: [], error: 'Empty CSV' };
+  }
+  const lines = text.replace(/^\uFEFF/, '').trim().split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) {
+    return { candles: [], error: 'Need header + at least one row' };
+  }
+
+  const split = (line) => {
+    // handle simple commas / tabs / semicolons
+    if (line.includes('\t')) return line.split('\t');
+    if (line.includes(';')) return line.split(';');
+    return line.split(',');
+  };
+
+  const header = split(lines[0]).map(h => h.trim().toLowerCase().replace(/['"]/g, ''));
+  const idx = {
+    time: header.findIndex(h => /^(time|date|datetime|timestamp)$/.test(h)),
+    open: header.findIndex(h => h === 'open' || h === 'o'),
+    high: header.findIndex(h => h === 'high' || h === 'h'),
+    low: header.findIndex(h => h === 'low' || h === 'l'),
+    close: header.findIndex(h => h === 'close' || h === 'c' || h === 'ltp'),
+    volume: header.findIndex(h => h === 'volume' || h === 'vol' || h === 'v')
+  };
+
+  // Headerless fallback: time,open,high,low,close[,volume]
+  let startRow = 1;
+  const headerless = idx.open < 0 || idx.high < 0 || idx.low < 0 || idx.close < 0;
+  if (headerless) {
+    const sample = split(lines[0]).map(x => x.trim());
+    if (sample.length >= 5 && !isNaN(parseFloat(sample[1]))) {
+      idx.time = 0;
+      idx.open = 1;
+      idx.high = 2;
+      idx.low = 3;
+      idx.close = 4;
+      idx.volume = sample.length > 5 ? 5 : -1;
+      startRow = 0;
+    } else {
+      return { candles: [], error: 'CSV needs columns: time,open,high,low,close' };
+    }
+  }
+
+  const candles = [];
+  for (let i = startRow; i < lines.length; i++) {
+    const cols = split(lines[i]).map(c => c.trim().replace(/['"]/g, ''));
+    const open = parseFloat(cols[idx.open]);
+    const high = parseFloat(cols[idx.high]);
+    const low = parseFloat(cols[idx.low]);
+    const close = parseFloat(cols[idx.close]);
+    if ([open, high, low, close].some(v => isNaN(v) || v <= 0)) continue;
+    let startTime = Date.now();
+    if (idx.time >= 0 && cols[idx.time]) {
+      const raw = cols[idx.time];
+      const asNum = Number(raw);
+      if (!isNaN(asNum) && asNum > 1e9) {
+        startTime = asNum < 1e12 ? asNum * 1000 : asNum;
+      } else {
+        const parsed = Date.parse(raw);
+        if (!isNaN(parsed)) startTime = parsed;
+      }
+    }
+    const volume = idx.volume >= 0 ? Math.max(1, parseFloat(cols[idx.volume]) || 1) : 1;
+    candles.push({
+      startTime,
+      open,
+      high: Math.max(high, open, close),
+      low: Math.min(low, open, close),
+      close,
+      volume,
+      complete: true
+    });
+  }
+
+  candles.sort((a, b) => a.startTime - b.startTime);
+  if (candles.length < 12) {
+    return { candles, error: `Only ${candles.length} valid rows — need more history` };
+  }
+  return { candles, error: null };
+}
+
+/* ==========================================
+   BACKTEST — walk-forward same generateSignals
+   ========================================== */
+function backtestSignals(candles, options = {}) {
+  const modeId = options.mode || 'intraday';
+  const mode = getModeProfile(modeId);
+  const instrument = options.instrument || classifyInstrument(options.symbol || 'NIFTY');
+  const holdBars = Math.max(1, parseInt(options.holdBars, 10) || (modeId === 'scalp' ? 3 : 5));
+  const minNeed = mode.minCandles;
+  const buyFloor = mode.actionableAt;
+
+  if (!Array.isArray(candles) || candles.length < minNeed + holdBars + 1) {
+    return {
+      ok: false,
+      error: `Need at least ${minNeed + holdBars + 1} candles (have ${candles ? candles.length : 0})`,
+      mode: modeId,
+      trades: [],
+      stats: null
+    };
+  }
+
+  const trades = [];
+  let equity = 0;
+  let peak = 0;
+  let maxDD = 0;
+  let cooldownUntil = -1;
+
+  for (let i = minNeed; i < candles.length - holdBars; i++) {
+    if (i < cooldownUntil) continue;
+
+    const window = candles.slice(0, i + 1);
+    const result = generateSignals(window, { ...instrument, mode: modeId });
+    if (!result || result.action !== 'BUY' || result.strength < buyFloor) continue;
+    if (!result.direction || result.direction === 'WAIT') continue;
+
+    const entry = candles[i].close;
+    const exit = candles[i + holdBars].close;
+    const move = exit - entry;
+
+    // Index: CE profits if up, PE if down. Option BUY: premium up.
+    let pnlPts;
+    let side;
+    if (instrument.kind === 'option') {
+      side = 'BUY';
+      pnlPts = move;
+    } else if (result.direction === 'CE') {
+      side = 'CE';
+      pnlPts = move;
+    } else if (result.direction === 'PE') {
+      side = 'PE';
+      pnlPts = -move;
+    } else if (result.direction === 'BUY') {
+      side = 'BUY';
+      pnlPts = move;
+    } else {
+      continue;
+    }
+
+    equity += pnlPts;
+    peak = Math.max(peak, equity);
+    maxDD = Math.max(maxDD, peak - equity);
+
+    trades.push({
+      index: i,
+      time: candles[i].startTime,
+      side,
+      direction: result.direction,
+      strength: result.strength,
+      message: result.message,
+      entry,
+      exit,
+      holdBars,
+      pnlPts: Number(pnlPts.toFixed(2)),
+      win: pnlPts > 0
+    });
+
+    // Avoid overlapping entries for cleaner stats
+    cooldownUntil = i + holdBars;
+  }
+
+  const wins = trades.filter(t => t.win);
+  const losses = trades.filter(t => !t.win);
+  const grossWin = wins.reduce((s, t) => s + t.pnlPts, 0);
+  const grossLoss = Math.abs(losses.reduce((s, t) => s + t.pnlPts, 0));
+  const totalPnl = trades.reduce((s, t) => s + t.pnlPts, 0);
+  const winRate = trades.length ? (wins.length / trades.length) * 100 : 0;
+  const avgWin = wins.length ? grossWin / wins.length : 0;
+  const avgLoss = losses.length ? grossLoss / losses.length : 0;
+  const profitFactor = grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? Infinity : 0);
+  const expectancy = trades.length ? totalPnl / trades.length : 0;
+
+  return {
+    ok: true,
+    error: null,
+    mode: modeId,
+    instrument,
+    holdBars,
+    buyFloor,
+    candlesUsed: candles.length,
+    trades,
+    stats: {
+      trades: trades.length,
+      wins: wins.length,
+      losses: losses.length,
+      winRate: Number(winRate.toFixed(1)),
+      avgWin: Number(avgWin.toFixed(2)),
+      avgLoss: Number(avgLoss.toFixed(2)),
+      profitFactor: profitFactor === Infinity ? 999 : Number(profitFactor.toFixed(2)),
+      expectancy: Number(expectancy.toFixed(2)),
+      totalPnl: Number(totalPnl.toFixed(2)),
+      maxDD: Number(maxDD.toFixed(2))
+    }
+  };
+}
+
 window.KPSignalEngine = {
   CandleCollector,
+  TIMEFRAMES,
+  TRADE_MODES,
+  MIN_CANDLES,
+  getModeProfile,
+  classifyInstrument,
   computeRSI,
   computeMACD,
   computeEMA,
   computeBollingerBands,
   computeVWAP,
   computeSupertrend,
-  generateSignals
+  generateSignals,
+  parseCandleCSV,
+  backtestSignals
 };

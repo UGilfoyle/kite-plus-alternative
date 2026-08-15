@@ -15,8 +15,8 @@
         <svg class="logo-icon" viewBox="0 0 100 100" width="28" height="28">
           <defs>
             <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stop-color="#3b82f6" />
-              <stop offset="100%" stop-color="#8b5cf6" />
+              <stop offset="0%" stop-color="var(--accent-blue)" />
+              <stop offset="100%" stop-color="var(--accent-purple)" />
             </linearGradient>
           </defs>
           <polygon points="45,15 65,35 45,55 25,35" fill="url(#logo-grad)" />
@@ -27,7 +27,10 @@
         </svg>
         <span class="logo-text">Kite<span class="highlight">Plus</span></span>
       </div>
-      <span class="version-tag">v1.0.0</span>
+      <div class="header-meta">
+        <span class="broker-chip" id="broker-chip">Broker</span>
+        <span class="version-tag">v2.2.0</span>
+      </div>
     </header>
 
     <!-- Sandbox Button -->
@@ -39,17 +42,93 @@
       <button id="open-sandbox" class="btn btn-primary">Open Sandbox Demo</button>
     </div>
 
+    <!-- Data source -->
+    <section class="dhan-section">
+      <h2>Market data (free)</h2>
+      <p class="dhan-hint">
+        <b>Yahoo Finance is used by default — free, no signup.</b>
+        Your signals already work on Yahoo stock history. Dhan Data API is optional and paid (~₹499/mo); skip it unless you specifically want Dhan LTP/history.
+      </p>
+      <details class="dhan-optional">
+        <summary>Optional: Dhan Data API (paid)</summary>
+        <p class="dhan-hint">Only if you already subscribe to Dhan Data APIs. Free Trading API tokens will fail with “Data APIs not Subscribed”.</p>
+        <label class="dhan-field">
+          <span>Client ID</span>
+          <input type="text" id="dhan-client-id" placeholder="Your Dhan client ID" autocomplete="off" />
+        </label>
+        <label class="dhan-field">
+          <span>Access Token</span>
+          <input type="password" id="dhan-access-token" placeholder="JWT access token" autocomplete="off" />
+        </label>
+        <div class="dhan-actions">
+          <button type="button" class="btn btn-primary" id="dhan-save">Save</button>
+          <button type="button" class="btn btn-secondary" id="dhan-test">Test</button>
+          <button type="button" class="btn btn-ghost" id="dhan-clear">Clear</button>
+        </div>
+        <div class="dhan-status" id="dhan-status">Status: Using free Yahoo (recommended)</div>
+      </details>
+      <details class="dhan-optional" open>
+        <summary>Upstox API (recommended on Upstox charts)</summary>
+        <p class="dhan-hint">
+          Paste Access Token from the Upstox developer app. Token expires ~3:30 AM IST next day.
+          Enables D / W / M / 45m history + golden-crossover analysis. Analysis only — no orders.
+        </p>
+        <label class="dhan-field">
+          <span>API Key</span>
+          <input type="text" id="upstox-api-key" placeholder="Optional · for future OAuth" autocomplete="off" />
+        </label>
+        <label class="dhan-field">
+          <span>Access Token</span>
+          <input type="password" id="upstox-access-token" placeholder="Bearer access token" autocomplete="off" />
+        </label>
+        <div class="dhan-actions">
+          <button type="button" class="btn btn-primary" id="upstox-save">Save</button>
+          <button type="button" class="btn btn-secondary" id="upstox-test">Test</button>
+          <button type="button" class="btn btn-ghost" id="upstox-clear">Clear</button>
+        </div>
+        <div class="dhan-status" id="upstox-status">Status: Using free Yahoo until token saved</div>
+      </details>
+    </section>
+
+    <section class="dhan-section investor-section">
+      <h2>Investor defaults</h2>
+      <p class="dhan-hint">Educational position sizing for Megamind Focus · not an order.</p>
+      <label class="dhan-field">
+        <span>Default risk %</span>
+        <input type="number" id="investor-risk-pct" min="0.25" max="5" step="0.25" value="1" />
+      </label>
+      <label class="dhan-field">
+        <span>Default capital (₹)</span>
+        <input type="number" id="investor-capital" min="1000" step="1000" value="100000" />
+      </label>
+      <div class="dhan-actions">
+        <button type="button" class="btn btn-primary" id="investor-save">Save</button>
+        <button type="button" class="btn btn-ghost" id="journal-clear">Clear journal</button>
+      </div>
+      <div class="dhan-status" id="investor-status">Risk 1% · capital ₹1,00,000</div>
+    </section>
+
     <!-- Features Section -->
     <section class="features">
       <h2>Active Features</h2>
       
       <div class="feature-card">
         <div class="feature-info">
-          <span class="feature-title">📊 Signal Engine</span>
-          <span class="feature-desc">Buy PE/CE signals with multi-indicator confluence (RSI, MACD, EMA, BB, VWAP, Supertrend).</span>
+          <span class="feature-title">Megamind Signals</span>
+          <span class="feature-desc">Kite / Upstox / Dhan chart signals (ChartIQ + TradingView) for stocks, indices and options.</span>
         </div>
         <label class="switch">
           <input type="checkbox" id="toggle-signals" checked>
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="feature-card">
+        <div class="feature-info">
+          <span class="feature-title">Stock & Positional Analysis</span>
+          <span class="feature-desc">BUY/HOLD/WAIT/EXIT, golden cross, S/R and 45m–1D–1W–1M analysis for the open stock.</span>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="toggle-stock-analysis" checked>
           <span class="slider"></span>
         </label>
       </div>
@@ -102,7 +181,7 @@
     <footer>
       <div class="status-indicator">
         <span class="pulse-dot"></span>
-        <span>Running on kite.zerodha.com</span>
+        <span>Running on Kite, Upstox & Dhan charts</span>
       </div>
       <a href="#" id="reset-settings" class="reset-link">Reset Defaults</a>
     </footer>

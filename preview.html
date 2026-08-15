@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KitePlus Megamind — Live Test & UI Preview</title>
+  <link rel="stylesheet" href="content.css">
+  <style>
+    /* Daylight / Light Mode Default */
+    :root {
+      --bg-page: #f1f5f9;
+      --bg-stage: #ffffff;
+      --border-color: #cbd5e1;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --chart-bg: #ffffff;
+      --chart-grid: #e2e8f0;
+      --accent: #2563eb;
+      --green: #00a843;
+      --red: #dc2626;
+      --amber: #d97706;
+    }
+
+    /* Dark Mode Root */
+    body.dark-theme {
+      --bg-page: #0b0e14;
+      --bg-stage: #151921;
+      --border-color: #232a36;
+      --text-main: #e2e8f0;
+      --text-muted: #94a3b8;
+      --chart-bg: #0d1117;
+      --chart-grid: rgba(255, 255, 255, 0.06);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg-page);
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      transition: background 0.2s, color 0.2s;
+    }
+    header {
+      background: var(--bg-stage);
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .logo-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: #fff;
+      font-weight: 800;
+      font-size: 16px;
+      width: 32px;
+      height: 32px;
+      display: grid;
+      place-items: center;
+      border-radius: 8px;
+    }
+    .title { font-size: 16px; font-weight: 700; }
+    .subtitle { font-size: 11px; color: var(--text-muted); }
+    .controls-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .ctrl-label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    select, button.btn-action {
+      background: var(--bg-stage);
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+      padding: 5px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      outline: none;
+      transition: all 0.2s;
+    }
+    select:hover, button.btn-action:hover {
+      border-color: var(--accent);
+    }
+    button.btn-primary {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+      font-weight: 700;
+    }
+    button.btn-primary:hover {
+      background: #1d4ed8;
+    }
+    .main-layout {
+      display: grid;
+      grid-template-columns: 1fr 440px;
+      flex: 1;
+      gap: 16px;
+      padding: 16px;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    @media (max-width: 1024px) {
+      .main-layout { grid-template-columns: 1fr; }
+    }
+    .chart-stage {
+      background: var(--bg-stage);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .stage-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .stock-badge {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .stock-symbol { font-size: 18px; font-weight: 800; }
+    .stock-price { font-size: 16px; font-weight: 700; color: var(--green); }
+    .stock-chg { font-size: 12px; font-weight: 600; }
+    .canvas-box {
+      flex: 1;
+      min-height: 400px;
+      background: var(--chart-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      position: relative;
+      overflow: hidden;
+    }
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    .scenario-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 8px;
+    }
+    .scenario-btn {
+      background: var(--bg-stage);
+      border: 1px solid var(--border-color);
+      padding: 8px 10px;
+      border-radius: 6px;
+      color: var(--text-main);
+      font-size: 11px;
+      text-align: left;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .scenario-btn:hover, .scenario-btn.active {
+      border-color: var(--accent);
+      background: rgba(37, 99, 235, 0.1);
+    }
+    .scenario-btn strong { display: block; font-size: 12px; margin-bottom: 2px; }
+    .preview-container {
+      position: relative;
+    }
+    /* Embed panel directly inside container */
+    .preview-container .kp-signal-panel {
+      position: relative !important;
+      top: 0 !important;
+      right: 0 !important;
+      bottom: auto !important;
+      width: 100% !important;
+      max-height: none !important;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.12) !important;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo-group">
+      <div class="logo-badge">M</div>
+      <div>
+        <div class="title">KitePlus Megamind — Live Test & UI Preview</div>
+        <div class="subtitle">Multi-Broker (Kite / Upstox / Dhan) · Daylight & Dark Modes · 1:2 R:R Overlays</div>
+      </div>
+    </div>
+    <div class="controls-bar">
+      <div>
+        <span class="ctrl-label">Broker: </span>
+        <select id="sel-broker">
+          <option value="kite" selected>Zerodha Kite</option>
+          <option value="upstox">Upstox Pro</option>
+          <option value="dhan">Dhan Trading</option>
+        </select>
+      </div>
+      <div>
+        <span class="ctrl-label">Theme: </span>
+        <select id="sel-mode">
+          <option value="daylight" selected>☀️ Daylight (Light)</option>
+          <option value="dark">🌙 Dark Mode</option>
+        </select>
+      </div>
+      <div>
+        <span class="ctrl-label">Timeframe: </span>
+        <select id="sel-tf">
+          <option value="1D" selected>Daily (1D) — Swing Default</option>
+          <option value="15m">15m — Intraday</option>
+          <option value="1m">1m — Scalp</option>
+        </select>
+      </div>
+      <button class="btn-action btn-primary" id="btn-run-bt">⚡ Walk-Forward Backtest</button>
+    </div>
+  </header>
+
+  <div class="main-layout">
+    <!-- Chart Stage -->
+    <div class="chart-stage">
+      <div class="stage-header">
+        <div class="stock-badge">
+          <span class="stock-symbol" id="disp-sym">RELIANCE</span>
+          <span class="stock-price" id="disp-price">₹2,626.95</span>
+          <span class="stock-chg" style="color:var(--green)">+2.14%</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted)">
+          Chart View: <strong id="chart-broker-tag" style="color:var(--accent)">Kite TradingView</strong> · <span id="bar-count-disp">250</span> candles
+        </div>
+      </div>
+
+      <div class="canvas-box">
+        <!-- Live On-Chart HUD Header Overlay -->
+        <div class="kp-chart-overlay-hud" id="preview-chart-hud"></div>
+        <canvas id="chart-canvas"></canvas>
+      </div>
+
+      <div style="font-size:12px;font-weight:700;margin-top:2px">Select Test Market Scenario:</div>
+      <div class="scenario-cards">
+        <button class="scenario-btn active" data-scenario="breakout">
+          <strong style="color:var(--green)">1. Bullish Breakout</strong>
+          Score 9.5/10 · BUY Trigger · 1:2 R:R
+        </button>
+        <button class="scenario-btn" data-scenario="pullback">
+          <strong style="color:var(--green)">2. EMA20 Pullback</strong>
+          Score 9.0/10 · Reclaim Bounce
+        </button>
+        <button class="scenario-btn" data-scenario="breakdown">
+          <strong style="color:var(--red)">3. Bearish Breakdown</strong>
+          Score 8.5/10 · SHORT Trigger · 1:2 R:R
+        </button>
+        <button class="scenario-btn" data-scenario="chop">
+          <strong style="color:var(--amber)">4. Range / Chop</strong>
+          Score 5.5/10 · WAIT / No Edge
+        </button>
+      </div>
+    </div>
+
+    <!-- Live Megamind Panel Mount -->
+    <div class="preview-container">
+      <div class="kp-signal-panel kp-theme-kite kp-mode-daylight" id="megamind-mount">
+        <!-- Rendered dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Extension Engines -->
+  <script src="broker-adapters.js"></script>
+  <script src="signal-engine.js"></script>
+  <script src="positional-engine.js"></script>
+  <script src="swing-engine.js"></script>
+
+  <script>
+    // State
+    let currentScenario = 'breakout';
+    let currentCandles = [];
+    let currentBroker = 'kite'; // 'kite' | 'upstox' | 'dhan'
+    let currentTheme = 'daylight'; // 'daylight' | 'dark'
+    let currentTradeMode = 'swing';
+
+    const BROKER_NAMES = {
+      kite: 'Kite',
+      upstox: 'Upstox',
+      dhan: 'Dhan'
+    };
+
+    // Generate Scenarios
+    function generateScenarioCandles(type, n = 250) {
+      const candles = [];
+      let price = type === 'breakdown' ? 3200 : (type === 'pullback' ? 1450 : 2400);
+      for (let i = 0; i < n; i++) {
+        const isLast = i === n - 1;
+        const isPenult = i === n - 2;
+        let change, vol;
+
+        if (type === 'breakout') {
+          if (isLast) {
+            change = price * 0.024;
+            vol = 14000;
+          } else if (i >= n - 12) {
+            change = (Math.random() - 0.49) * price * 0.004;
+            vol = 3000 + Math.floor(Math.random() * 1500);
+          } else {
+            change = (Math.random() - 0.44) * price * 0.009;
+            vol = 4000 + Math.floor(Math.random() * 2000);
+          }
+        } else if (type === 'pullback') {
+          if (isLast) {
+            change = price * 0.016; // bounce reclaim
+            vol = 11000;
+          } else if (isPenult) {
+            change = -price * 0.015; // dip to EMA20
+            vol = 5000;
+          } else {
+            change = (Math.random() - 0.44) * price * 0.008;
+            vol = 4000 + Math.floor(Math.random() * 2000);
+          }
+        } else if (type === 'breakdown') {
+          if (isLast) {
+            change = -price * 0.026; // breakdown
+            vol = 16000;
+          } else if (i >= n - 10) {
+            change = (Math.random() - 0.51) * price * 0.004;
+            vol = 3000 + Math.floor(Math.random() * 1500);
+          } else {
+            change = (Math.random() - 0.56) * price * 0.009;
+            vol = 4000 + Math.floor(Math.random() * 2000);
+          }
+        } else {
+          // Chop
+          change = (Math.random() - 0.50) * price * 0.008;
+          vol = 3000 + Math.floor(Math.random() * 1500);
+        }
+
+        const open = price;
+        const close = Math.max(10, price + change);
+        const high = Math.max(open, close) + price * 0.003;
+        const low = Math.min(open, close) - price * 0.003;
+
+        candles.push({
+          startTime: Date.now() - (n - i) * 86400000,
+          open, high, low, close, volume: vol, complete: true
+        });
+        price = close;
+      }
+      return candles;
+    }
+
+    // Chart Canvas Renderer — Universal High Contrast for Light & Dark Charts
+    function drawChart(candles, signal) {
+      const canvas = document.getElementById('chart-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+
+      const w = rect.width;
+      const h = rect.height;
+      const isDark = currentTheme === 'dark';
+
+      // Clear & Background
+      ctx.fillStyle = isDark ? '#0d1117' : '#ffffff';
+      ctx.fillRect(0, 0, w, h);
+
+      if (!candles.length) return;
+      const visible = candles.slice(-50);
+      let minP = Infinity, maxP = -Infinity;
+      visible.forEach(c => {
+        if (c.low < minP) minP = c.low;
+        if (c.high > maxP) maxP = c.high;
+      });
+
+      // Add space for trade levels if active
+      if (signal && signal.trade) {
+        if (signal.trade.stopLoss < minP) minP = signal.trade.stopLoss;
+        if (signal.trade.target1 > maxP) maxP = signal.trade.target1;
+      }
+
+      const pad = (maxP - minP) * 0.12;
+      minP -= pad;
+      maxP += pad;
+
+      const pToY = p => h - ((p - minP) / (maxP - minP)) * (h - 60) - 30;
+      const candleW = Math.max(4, (w - 180) / visible.length - 4);
+
+      // Grid Lines
+      ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i <= 4; i++) {
+        const y = (h / 5) * i;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+
+      // Draw Candlesticks
+      visible.forEach((c, idx) => {
+        const x = 30 + idx * ((w - 180) / visible.length) + candleW / 2;
+        const yO = pToY(c.open);
+        const yC = pToY(c.close);
+        const yH = pToY(c.high);
+        const yL = pToY(c.low);
+        const isUp = c.close >= c.open;
+
+        const upColor = isDark ? '#00e676' : '#00a843';
+        const downColor = isDark ? '#ff5252' : '#dc2626';
+
+        ctx.strokeStyle = isUp ? upColor : downColor;
+        ctx.fillStyle = isUp ? upColor : downColor;
+
+        // Wick
+        ctx.beginPath();
+        ctx.moveTo(x, yH);
+        ctx.lineTo(x, yL);
+        ctx.stroke();
+
+        // Body
+        const top = Math.min(yO, yC);
+        const height = Math.max(2, Math.abs(yO - yC));
+        ctx.fillRect(x - candleW / 2, top, candleW, height);
+      });
+
+      // Draw On-Chart Level Lines with Dual-Contrast Pill Badges
+      if (signal && signal.trade) {
+        const tr = signal.trade;
+        const isLong = tr.direction === 'LONG';
+
+        const drawLevelLine = (price, title, strokeColor, badgeBg, badgeTextColor) => {
+          if (!price) return;
+          const y = pToY(price);
+
+          // 1. Dark Shadow Halo for 100% visibility on light background
+          ctx.strokeStyle = isDark ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.25)';
+          ctx.lineWidth = 3;
+          ctx.setLineDash([6, 5]);
+          ctx.beginPath();
+          ctx.moveTo(10, y);
+          ctx.lineTo(w - 140, y);
+          ctx.stroke();
+
+          // 2. Main Colored Line
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          ctx.moveTo(10, y);
+          ctx.lineTo(w - 140, y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // 3. Right Pill Badge
+          const pillText = `${title} ₹${price.toFixed(2)}`;
+          ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+          const textMetrics = ctx.measureText(pillText);
+          const pillW = textMetrics.width + 16;
+          const pillH = 22;
+          const pillX = w - pillW - 15;
+          const pillY = y - pillH / 2;
+
+          // Pill shadow
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.fillRect(pillX - 1, pillY - 1, pillW + 2, pillH + 2);
+
+          // Pill background
+          ctx.fillStyle = badgeBg;
+          ctx.fillRect(pillX, pillY, pillW, pillH);
+
+          // Pill border
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 1.2;
+          ctx.strokeRect(pillX, pillY, pillW, pillH);
+
+          // Pill text
+          ctx.fillStyle = badgeTextColor;
+          ctx.fillText(pillText, pillX + 8, y + 4);
+        };
+
+        const entryLabel = isLong ? 'BUY ABOVE' : 'SELL BELOW';
+        drawLevelLine(tr.target1, 'TARGET 1:2', '#00c853', isDark ? '#003314' : '#00a843', '#ffffff');
+        drawLevelLine(tr.entry, entryLabel, '#2563eb', isDark ? '#0f2759' : '#2563eb', '#ffffff');
+        drawLevelLine(tr.stopLoss, 'STOP LOSS', '#ff1744', isDark ? '#4a0812' : '#dc2626', '#ffffff');
+      }
+    }
+
+    // Refresh Simulator
+    function refreshSimulator() {
+      currentCandles = generateScenarioCandles(currentScenario, 250);
+      const last = currentCandles[currentCandles.length - 1];
+      const sym = currentScenario === 'breakdown' ? 'TCS' : (currentScenario === 'pullback' ? 'HDFCBANK' : 'RELIANCE');
+      
+      document.getElementById('disp-sym').textContent = sym;
+      document.getElementById('disp-price').textContent = '₹' + last.close.toFixed(2);
+      document.getElementById('bar-count-disp').textContent = currentCandles.length;
+      document.getElementById('chart-broker-tag').textContent = `${BROKER_NAMES[currentBroker]} TradingView`;
+
+      // Apply body theme
+      document.body.className = currentTheme === 'dark' ? 'dark-theme' : '';
+
+      // Run swing signal
+      const swingRes = window.KPSwingEngine.generateSwingSignal(currentCandles, { minimumScore: 8.0 });
+      drawChart(currentCandles, swingRes);
+
+      // Render On-Chart HUD
+      renderChartHud(swingRes, sym);
+
+      // Render Megamind Panel UI
+      renderPreviewPanel(swingRes, currentCandles, sym);
+    }
+
+    // Render On-Chart HUD Chip
+    function renderChartHud(sw, sym) {
+      const hud = document.getElementById('preview-chart-hud');
+      if (!hud) return;
+
+      const trade = sw.trade || sw.signalTrade;
+      if (trade) {
+        const isLong = trade.direction === 'LONG';
+        hud.innerHTML = `
+          <div class="kp-chart-hud-pill ${isLong ? 'long' : 'short'}">
+            <span>${isLong ? '🎯' : '🔻'} <b>${sym}</b> · ${isLong ? 'BUY ABOVE' : 'SELL BELOW'} ₹${trade.entry.toFixed(2)}</span>
+            <span class="hud-level hud-sl">SL: ₹${trade.stopLoss.toFixed(2)}</span>
+            <span class="hud-level hud-target">T1 (1:2): ₹${trade.target1.toFixed(2)}</span>
+            <span class="hud-score">Score ${trade.rating}/10</span>
+          </div>
+        `;
+      } else {
+        hud.innerHTML = `
+          <div class="kp-chart-hud-pill wait">
+            <span>⏳ <b>${sym}</b> · Waiting for high-confluence setup</span>
+            <span class="hud-score">SWING PRO</span>
+          </div>
+        `;
+      }
+    }
+
+    // Render Megamind Panel in Mount
+    function renderPreviewPanel(sw, candles, sym) {
+      const mount = document.getElementById('megamind-mount');
+      if (!mount) return;
+
+      const trade = sw.trade || sw.signalTrade;
+      const d = sw.dashboard;
+      const themeClass = `kp-theme-${currentBroker}`;
+      const modeClass = currentTheme === 'dark' ? 'kp-mode-dark' : 'kp-mode-daylight';
+      mount.className = `kp-signal-panel ${themeClass} ${modeClass}`;
+
+      const dirColor = trade ? (trade.direction === 'LONG' ? 'var(--kp-green, #00c853)' : 'var(--kp-red, #ff1744)') : 'var(--kp-accent)';
+      const isPass = sw.action === 'LONG' || sw.action === 'SHORT';
+      const brokerLabel = BROKER_NAMES[currentBroker] || 'Kite';
+
+      mount.innerHTML = `
+        <div class="kp-signal-header">
+          <div class="kp-signal-header-left">
+            <span class="kp-signal-mark">M</span>
+            <span class="kp-signal-header-title">Megamind</span>
+            <span class="kp-broker-chip">${brokerLabel}</span>
+          </div>
+          <div class="kp-signal-header-right">
+            <button type="button" class="kp-signal-theme-btn" id="preview-theme-btn" title="Toggle Daylight / Dark Theme">${currentTheme === 'dark' ? '☀️ Day' : '🌙 Dark'}</button>
+            <span class="kp-signal-header-badge ${isPass ? (trade?.direction === 'LONG' ? 'signal-strong-ce' : 'signal-strong-pe') : 'no-signal'}">
+              ${sw.status}
+            </span>
+          </div>
+        </div>
+
+        <div class="kp-signal-body kp-focus-body">
+          <div class="kp-mode-bar kp-focus-modes">
+            <button type="button" class="kp-mode-btn" data-m="scalp"><span class="kp-mode-name">Scalp</span></button>
+            <button type="button" class="kp-mode-btn" data-m="intraday"><span class="kp-mode-name">Intraday</span></button>
+            <button type="button" class="kp-mode-btn active" data-m="swing"><span class="kp-mode-name">Swing</span></button>
+            <button type="button" class="kp-mode-btn" data-m="positional"><span class="kp-mode-name">Positional</span></button>
+          </div>
+          <div class="kp-focus-rule">Swing Pro · Structure + 1:2 RR · Rating ≥8.0/10</div>
+
+          <div class="kp-focus-meta">
+            <div class="kp-focus-meta-item"><span class="kp-meta-label">Symbol</span><span class="kp-meta-value">${sym}</span></div>
+            <div class="kp-focus-meta-item"><span class="kp-meta-label">Broker</span><span class="kp-meta-value">${brokerLabel}</span></div>
+            <div class="kp-focus-meta-item"><span class="kp-meta-label">Bars</span><span class="kp-meta-value">${candles.length}/45</span></div>
+            <div class="kp-focus-meta-item"><span class="kp-meta-label">LTP</span><span class="kp-meta-value">${document.getElementById('disp-price').textContent}</span></div>
+          </div>
+
+          <div class="kp-signal-main kp-focus-main">
+            <div class="kp-focus-kicker">Decision</div>
+            <div class="kp-signal-main-badge ${isPass ? (trade?.direction === 'LONG' ? 'ce strong' : 'pe strong') : 'neutral'}">
+              <span>${sw.status === 'BUY / LONG' ? 'BUY / LONG' : (sw.status === 'SELL / SHORT' ? 'SELL / SHORT' : 'WAIT — No Clean Edge')}</span>
+            </div>
+            
+            <div class="kp-brain-row">
+              <span>Long ${sw.longScore}/10</span>
+              <span>Short ${sw.shortScore}/10</span>
+              <span>${d?.trend || '—'}</span>
+            </div>
+
+            <!-- Trade Card -->
+            <div id="kp-equity-levels">
+              ${trade ? `
+                <div class="kp-swing-trade-card" style="border:1px solid ${trade.direction === 'LONG' ? 'rgba(0,200,83,0.35)' : 'rgba(255,23,68,0.35)'};border-left:4px solid ${dirColor};padding:10px 12px;margin:8px 0;border-radius:6px;background:var(--kp-panel-surface)">
+                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                    <span style="font-weight:700;font-size:13px;color:${dirColor}">🎯 ${trade.direction} · 1:2 R:R</span>
+                    <span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.06);color:${dirColor}">Score ${trade.rating}/10</span>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px;background:rgba(0,0,0,0.04);padding:6px 8px;border-radius:4px">
+                    <div><span style="opacity:0.6;font-size:10px">Entry</span><br><strong style="font-size:12px">₹${trade.entry.toFixed(2)}</strong></div>
+                    <div><span style="opacity:0.6;font-size:10px">Stop Loss</span><br><strong style="color:var(--kp-red, #ff1744);font-size:12px">₹${trade.stopLoss.toFixed(2)}</strong></div>
+                    <div><span style="opacity:0.6;font-size:10px">Target 1:2</span><br><strong style="color:var(--kp-green, #00c853);font-size:12px">₹${trade.target1.toFixed(2)}</strong></div>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.7;margin-top:6px">
+                    <span>Risk: <b style="color:var(--kp-red, #ff1744)">₹${trade.risk.toFixed(2)}</b></span>
+                    <span>Reward: <b style="color:var(--kp-green, #00c853)">₹${trade.reward.toFixed(2)}</b></span>
+                    <span>Ratio: <b>${trade.rr}</b></span>
+                  </div>
+                </div>
+              ` : `
+                <div style="font-size:11px;opacity:0.6;padding:8px 10px;border-radius:4px;background:var(--kp-panel-surface);border:1px dashed var(--kp-panel-border);margin:6px 0;text-align:center">
+                  ⏳ Waiting for high-confluence setup (Score ≥ 8.0 + Breakout/Pullback)
+                </div>
+              `}
+            </div>
+
+            <!-- Indicator Dashboard -->
+            ${d ? `
+              <div class="kp-swing-dashboard" style="font-size:11px;margin:6px 0;padding:10px;border-radius:6px;background:var(--kp-panel-surface);border:1px solid var(--kp-panel-border)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--kp-panel-border);padding-bottom:4px">
+                  <span style="font-weight:700;font-size:12px">Swing Pro Indicators</span>
+                  <span style="font-size:10px;font-weight:700;color:${d.trendBias === 'bullish' ? '#00a843' : (d.trendBias === 'bearish' ? '#dc2626' : '#d97706')}">${d.trend}</span>
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;line-height:1.5">
+                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">EMA Stack</span><strong>${d.emaStack}</strong></div>
+                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">RSI(14)</span><strong>${d.rsi ?? '—'}</strong></div>
+                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Volume</span><strong>${d.volumeRatio != null ? d.volumeRatio + 'x' : '—'}</strong></div>
+                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">ADX (14)</span><strong>${d.adx ?? '—'}</strong></div>
+                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">DI+ / DI-</span><strong>${d.diPlus ?? '—'}/${d.diMinus ?? '—'}</strong></div>
+                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">ATR (14)</span><strong>${d.atr ?? '—'}</strong></div>
+                </div>
+              </div>
+            ` : ''}
+
+            <!-- Checklist -->
+            <div style="margin:8px 0;background:var(--kp-panel-surface);padding:8px;border-radius:6px;border:1px solid var(--kp-panel-border)">
+              <div style="font-size:11px;font-weight:700;margin-bottom:6px;opacity:0.8">5-Gate Decision Checklist:</div>
+              ${sw.checklist.map(c => `
+                <div style="display:flex;gap:8px;align-items:center;font-size:11px;padding:2px 0">
+                  <span style="color:${c.pass ? '#00a843' : '#dc2626'};font-weight:800;width:14px;text-align:center">${c.pass ? '✓' : '✗'}</span>
+                  <span style="flex:1;font-weight:600">${c.label}</span>
+                  <span style="font-size:10px;opacity:0.6">${c.detail}</span>
+                </div>
+              `).join('')}
+            </div>
+
+            <!-- Backtest Section -->
+            <div id="bt-output-box" style="margin-top:10px"></div>
+          </div>
+        </div>
+      `;
+
+      // Mount theme toggle handler
+      document.getElementById('preview-theme-btn')?.addEventListener('click', () => {
+        currentTheme = currentTheme === 'dark' ? 'daylight' : 'dark';
+        document.getElementById('sel-mode').value = currentTheme;
+        refreshSimulator();
+      });
+    }
+
+    // Run Backtest
+    function runBacktestDemo() {
+      const report = window.KPSwingEngine.backtestSwing(currentCandles, { holdBars: 10, minimumScore: 8.0 });
+      const btBox = document.getElementById('bt-output-box');
+      if (!btBox) return;
+
+      const s = report.stats;
+      btBox.innerHTML = `
+        <div style="background:var(--kp-panel-surface);border:1px solid var(--accent);border-radius:6px;padding:10px;margin-top:8px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span style="font-weight:700;font-size:12px;color:var(--accent)">📊 Backtest Report (1:2 R:R Walk-Forward)</span>
+            <span style="font-size:10px;opacity:0.7">${report.candlesUsed} bars</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;text-align:center;font-size:11px">
+            <div style="background:rgba(0,0,0,0.04);padding:6px;border-radius:4px">
+              <b style="font-size:14px">${s.trades}</b><br><span style="opacity:0.6;font-size:10px">Trades</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.04);padding:6px;border-radius:4px">
+              <b style="font-size:14px;color:${s.winRate >= 60 ? '#00a843' : '#d97706'}">${s.winRate}%</b><br><span style="opacity:0.6;font-size:10px">Win Rate</span>
+            </div>
+            <div style="background:rgba(0,0,0,0.04);padding:6px;border-radius:4px">
+              <b style="font-size:14px;color:#00a843">${s.totalReturn > 0 ? '+' : ''}${s.totalReturn}%</b><br><span style="opacity:0.6;font-size:10px">Net Return</span>
+            </div>
+          </div>
+          <div style="margin-top:8px;font-size:10px;opacity:0.7">
+            Wins: <b>${s.wins}</b> · Losses: <b>${s.losses}</b> · Profit Factor: <b>${s.profitFactor}</b> · MaxDD: <b>${s.maxDD}%</b>
+          </div>
+        </div>
+      `;
+    }
+
+    // Event Listeners
+    document.querySelectorAll('.scenario-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.scenario-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentScenario = btn.dataset.scenario;
+        refreshSimulator();
+      });
+    });
+
+    document.getElementById('sel-broker').addEventListener('change', e => {
+      currentBroker = e.target.value;
+      refreshSimulator();
+    });
+
+    document.getElementById('sel-mode').addEventListener('change', e => {
+      currentTheme = e.target.value;
+      refreshSimulator();
+    });
+
+    document.getElementById('btn-run-bt').addEventListener('click', runBacktestDemo);
+    window.addEventListener('resize', () => drawChart(currentCandles));
+
+    // Initial Load
+    refreshSimulator();
+  </script>
+</body>
+</html>
