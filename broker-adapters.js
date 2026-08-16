@@ -41,17 +41,176 @@
     return map[value] || (String(raw || '').toUpperCase() === '1M' ? '1M' : null);
   }
 
+  const INDIAN_EQUITY_MAP = {
+    'MARUTI SUZUKI': 'MARUTI',
+    'MARUTI': 'MARUTI',
+    'RELIANCE INDUSTRIES': 'RELIANCE',
+    'RELIANCE': 'RELIANCE',
+    'TATA MOTORS': 'TATAMOTORS',
+    'TATAMOTORS': 'TATAMOTORS',
+    'TATA CONSULTANCY': 'TCS',
+    'TCS': 'TCS',
+    'TATA STEEL': 'TATASTEEL',
+    'TATA POWER': 'TATAPOWER',
+    'TATA CONSUMER': 'TATACONSUM',
+    'STATE BANK OF INDIA': 'SBIN',
+    'SBIN': 'SBIN',
+    'INFOSYS': 'INFY',
+    'INFY': 'INFY',
+    'HDFC BANK': 'HDFCBANK',
+    'HDFCBANK': 'HDFCBANK',
+    'ICICI BANK': 'ICICIBANK',
+    'ICICIBANK': 'ICICIBANK',
+    'AXIS BANK': 'AXISBANK',
+    'AXISBANK': 'AXISBANK',
+    'KOTAK MAHINDRA': 'KOTAKBANK',
+    'KOTAKBANK': 'KOTAKBANK',
+    'BHARTI AIRTEL': 'BHARTIARTL',
+    'BHARTIARTL': 'BHARTIARTL',
+    'LARSEN & TOUBRO': 'LT',
+    'LARSEN AND TOUBRO': 'LT',
+    'LT': 'LT',
+    'ITC': 'ITC',
+    'SUN PHARMACEUTICAL': 'SUNPHARMA',
+    'SUNPHARMA': 'SUNPHARMA',
+    'BAJAJ FINANCE': 'BAJFINANCE',
+    'BAJFINANCE': 'BAJFINANCE',
+    'BAJAJ FINSERV': 'BAJAJFINSV',
+    'BAJAJFINSV': 'BAJAJFINSV',
+    'BAJAJ AUTO': 'BAJAJ-AUTO',
+    'ASIAN PAINTS': 'ASIANPAINT',
+    'ASIANPAINT': 'ASIANPAINT',
+    'MAHINDRA & MAHINDRA': 'M&M',
+    'MAHINDRA AND MAHINDRA': 'M&M',
+    'M&M': 'M&M',
+    'HINDUSTAN UNILEVER': 'HINDUNILVR',
+    'HINDUNILVR': 'HINDUNILVR',
+    'COAL INDIA': 'COALINDIA',
+    'COALINDIA': 'COALINDIA',
+    'ADANI ENTERPRISES': 'ADANIENT',
+    'ADANIENT': 'ADANIENT',
+    'ADANI PORTS': 'ADANIPORTS',
+    'ADANIPORTS': 'ADANIPORTS',
+    'ADANI POWER': 'ADANIPOWER',
+    'ADANI GREEN': 'ADANIGREEN',
+    'ULTRATECH CEMENT': 'ULTRACEMCO',
+    'ULTRACEMCO': 'ULTRACEMCO',
+    'NESTLE INDIA': 'NESTLEIND',
+    'NESTLEIND': 'NESTLEIND',
+    'JSW STEEL': 'JSWSTEEL',
+    'JSWSTEEL': 'JSWSTEEL',
+    'TECH MAHINDRA': 'TECHM',
+    'TECHM': 'TECHM',
+    'HCL TECHNOLOGIES': 'HCLTECH',
+    'HCLTECH': 'HCLTECH',
+    'INDUSIND BANK': 'INDUSINDBK',
+    'INDUSINDBK': 'INDUSINDBK',
+    'HINDALCO': 'HINDALCO',
+    'EICHER MOTORS': 'EICHERMOT',
+    'EICHERMOT': 'EICHERMOT',
+    'DR. REDDY': 'DRREDDY',
+    'DR REDDY': 'DRREDDY',
+    'DRREDDY': 'DRREDDY',
+    'APOLLO HOSPITALS': 'APOLLOHOSP',
+    'APOLLOHOSP': 'APOLLOHOSP',
+    'DIVIS LAB': 'DIVISLAB',
+    'DIVISLAB': 'DIVISLAB',
+    'HERO MOTOCORP': 'HEROMOTOCO',
+    'HEROMOTOCO': 'HEROMOTOCO',
+    'BHARAT PETROLEUM': 'BPCL',
+    'BPCL': 'BPCL',
+    'HINDUSTAN PETROLEUM': 'HINDPETRO',
+    'BRITANNIA INDUSTRIES': 'BRITANNIA',
+    'BRITANNIA': 'BRITANNIA',
+    'SBI LIFE': 'SBILIFE',
+    'SBILIFE': 'SBILIFE',
+    'HDFC LIFE': 'HDFCLIFE',
+    'HDFCLIFE': 'HDFCLIFE',
+    'SHRIRAM FINANCE': 'SHRIRAMFIN',
+    'SHRIRAMFIN': 'SHRIRAMFIN',
+    'JIO FINANCIAL': 'JIOFIN',
+    'JIOFIN': 'JIOFIN',
+    'BHARAT ELECTRONICS': 'BEL',
+    'BEL': 'BEL',
+    'HINDUSTAN AERONAUTICS': 'HAL',
+    'HAL': 'HAL',
+    'PUNJAB NATIONAL BANK': 'PNB',
+    'PNB': 'PNB',
+    'BANK OF BARODA': 'BANKBARODA',
+    'BANKBARODA': 'BANKBARODA',
+    'CANARA BANK': 'CANBK',
+    'UNION BANK': 'UNIONBANK',
+    'INDIAN RAILWAY CATERING': 'IRCTC',
+    'IRCTC': 'IRCTC',
+    'POWER FINANCE': 'PFC',
+    'PFC': 'PFC',
+    'INDIAN OIL': 'IOC',
+    'IOC': 'IOC',
+    'GODREJ PROPERTIES': 'GODREJPROP',
+    'VARUN BEVERAGES': 'VBL',
+    'VBL': 'VBL',
+    'TVS MOTOR': 'TVSMOTOR',
+    'MUTHOOT FINANCE': 'MUTHOOTFIN',
+    'PERSISTENT SYSTEMS': 'PERSISTENT',
+    'ZOMATO': 'ZOMATO',
+    'VEDANTA': 'VEDL',
+    'VEDL': 'VEDL',
+    'TRENT': 'TRENT',
+    'LTIMINDTREE': 'LTIM',
+    'LTIM': 'LTIM',
+    'WIPRO': 'WIPRO',
+    'NTPC': 'NTPC',
+    'ONGC': 'ONGC',
+    'POWER GRID': 'POWERGRID',
+    'POWERGRID': 'POWERGRID'
+  };
+
+  function isIndicatorNoise(raw) {
+    const s = String(raw || '').trim().toUpperCase();
+    if (!s) return true;
+    // Reject indicator lines like MA 200 close 0, EMA 20, RSI 14, MACD, Volume SMA, etc.
+    if (/^(MA|EMA|SMA|WMA|DEMA|TEMA|VWAP|RSI|MACD|BB|BOLL|BOLLINGER|STOCH|SUPERTREND|ATR|ADX|VOL|VOLUME|PIVOT|SAR|CCI|OBV|MFI|AROON|KELTNER|DONCHIAN|CHAIKIN|ZIGZAG|ICHIMOKU|MOMENTUM|STOCHASTIC|HISTOGRAM|SIGNAL)\b/i.test(s)) {
+      return true;
+    }
+    if (/\b(CLOSE|OPEN|HIGH|LOW|HL2|HLC3|OHLC4)\s*\d+/i.test(s)) {
+      return true;
+    }
+    if (/\b(SMA|EMA|RSI|MACD|VOL)\s*\d+/i.test(s)) {
+      return true;
+    }
+    if (/^(BUY|SELL)\s*[\d.,]+/i.test(s) || /^[\d.,]+\s*(BUY|SELL)/i.test(s)) {
+      return true;
+    }
+    return false;
+  }
+
   function cleanSymbol(raw) {
     let value = String(raw || '')
       .replace(/\n+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
       .toUpperCase();
+
+    // Check if it has "MARUTI SUZUKI INDIA LTD. · 1D · NSE"
+    const firstPart = value.split(/[|·–—-]/)[0].trim();
+    if (firstPart && firstPart.length < value.length) {
+      value = firstPart;
+    }
+
     value = value
       .replace(/\b(NSE-EQ|BSE-EQ|NFO-OPT|BFO-OPT|NSE|BSE|NFO|BFO)\s*[:|/-]\s*/g, '')
+      .replace(/\b(LTD|LIMITED|CORP|CORPORATION|INC|HOLDINGS|CO)\b\.?/gi, '')
       .replace(/\s+(EQ|BE|BZ)$/g, '')
       .replace(/\s+(LTP|NSE|BSE)$/g, '')
       .trim();
+
+    // Match known Indian equity names
+    for (const [k, v] of Object.entries(INDIAN_EQUITY_MAP)) {
+      if (value === k || value.startsWith(k) || value.includes(k)) {
+        return v;
+      }
+    }
+
     return value;
   }
 
@@ -80,13 +239,15 @@
     const value = String(raw || '').trim().toUpperCase();
     if (!value) return true;
     if (value.length > 48) return true;
+    if (isIndicatorNoise(value)) return true;
     return /^(POSITIONS|ORDERS|HOLDINGS|FUNDS|MARKETWATCH|WATCHLIST|DASHBOARD|HOME|CHART|KITE|UPSTOX|ZERODHA|BY ZERODHA)\b/.test(value) ||
       /KITE BY ZERODHA|UPSTOX PRO|POSITIONS\s*\/|ORDERS\s*\//.test(value);
   }
 
   function acceptSymbol(raw) {
+    if (isIndicatorNoise(raw)) return '';
     const symbol = cleanSymbol(raw);
-    if (!symbol || isJunkSymbol(symbol)) return '';
+    if (!symbol || isJunkSymbol(symbol) || isIndicatorNoise(symbol)) return '';
     if (!/[A-Z]/.test(symbol)) return '';
     if (/^\d+$/.test(symbol.replace(/\s+/g, ''))) return '';
     // Keep option names intact even when long (e.g. NIFTY25JUL24400PE).
@@ -186,7 +347,9 @@
       '.instrument-select .tradingsymbol',
       '.instrument-select .nice-name',
       '.tv-symbol-header__short-name',
-      '.pane-legend-title__description',
+      '[data-name="legend-series-item"] .pane-legend-title__description',
+      '[data-name="legend-series-item"] [class*="title"]',
+      '.pane-legend-line:first-of-type .pane-legend-title__description',
       '[class*="chart"] [class*="tradingsymbol"]',
       '[class*="chart"] [class*="symbol"]',
       'cq-context [class*="symbol"]'
@@ -278,9 +441,24 @@
         );
     },
     scrapeSymbol() {
+      // 1. Try search input if user typed or opened from search
+      try {
+        const searchInput = document.querySelector('input[placeholder*="Search" i], [data-testid*="search"] input, .search-box input');
+        if (searchInput && searchInput.value) {
+          const s = acceptSymbol(searchInput.value);
+          if (s) return s;
+        }
+      } catch (_) {}
+
+      // 2. Primary DOM / TradingView series items
       return symbolFromDom([
         '[data-testid="instrument-name"]',
         '[data-testid*="symbol-name"]',
+        '[data-name="legend-series-item"] .pane-legend-title__description',
+        '[data-name="legend-series-item"] [class*="title"]',
+        '[data-name="legend-series-item"]',
+        '.tv-symbol-header__short-name',
+        '.pane-legend-line:first-of-type .pane-legend-title__description',
         '[data-testid*="instrument"] [class*="symbol"]',
         '[class*="InstrumentHeader"] [class*="symbol"]',
         '[class*="instrument-header"] [class*="name"]',
@@ -288,8 +466,6 @@
         '[class*="symbol-name"]',
         '[class*="scrip-name"]',
         '[class*="stock-name"]',
-        '.tv-symbol-header__short-name',
-        '.pane-legend-title__description',
         '[data-symbol]'
       ]) || symbolFromUrl() || acceptSymbol(titleSymbol());
     },

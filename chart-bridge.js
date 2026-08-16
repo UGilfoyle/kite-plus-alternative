@@ -54,23 +54,36 @@
     return Array.from(map.values()).sort((a, b) => a.startTime - b.startTime);
   }
 
+  function isIndicatorNoise(raw) {
+    const s = String(raw || '').trim().toUpperCase();
+    if (!s) return true;
+    if (/^(MA|EMA|SMA|WMA|DEMA|TEMA|VWAP|RSI|MACD|BB|BOLL|BOLLINGER|STOCH|SUPERTREND|ATR|ADX|VOL|VOLUME|PIVOT|SAR|CCI|OBV|MFI|AROON|KELTNER|DONCHIAN|CHAIKIN|ZIGZAG|ICHIMOKU|MOMENTUM|STOCHASTIC|HISTOGRAM|SIGNAL)\b/i.test(s)) {
+      return true;
+    }
+    if (/\b(CLOSE|OPEN|HIGH|LOW|HL2|HLC3|OHLC4)\s*\d+/i.test(s)) {
+      return true;
+    }
+    if (/\b(SMA|EMA|RSI|MACD|VOL)\s*\d+/i.test(s)) {
+      return true;
+    }
+    return false;
+  }
+
   function parseLegendOhlc(doc) {
     const root = doc || document;
     const textBlob = [];
     const selectors = [
+      '[data-name="legend-series-item"]',
+      '.pane-legend-line:first-of-type',
       '.pane-legend',
       '[class*="pane-legend"]',
       '[data-name="legend"]',
-      '[data-name="legend-source-item"]',
-      '.legend-source-item',
-      '[class*="legendSource"]',
-      '[class*="valueValue"]',
       '.chart-markup-table'
     ];
     selectors.forEach(sel => {
       root.querySelectorAll(sel).forEach(node => {
         const t = (node.textContent || '').replace(/\s+/g, ' ').trim();
-        if (t && t.length < 400) textBlob.push(t);
+        if (t && t.length < 400 && !isIndicatorNoise(t)) textBlob.push(t);
       });
     });
     const joined = textBlob.join(' | ');
@@ -79,9 +92,10 @@
       /O\s*([0-9]+(?:\.[0-9]+)?)\s*H\s*([0-9]+(?:\.[0-9]+)?)\s*L\s*([0-9]+(?:\.[0-9]+)?)\s*C\s*([0-9]+(?:\.[0-9]+)?)/i
     );
     if (!m) {
-      // Sometimes values are separate spans after O/H/L/C labels
+      // Look inside primary series item for values
+      const seriesRoot = root.querySelector('[data-name="legend-series-item"], .pane-legend-line:first-of-type') || root;
       const nums = [];
-      root.querySelectorAll(
+      seriesRoot.querySelectorAll(
         '.pane-legend-item-value, .pane-legend-item-value__main, [class*="pane-legend-item-value"], [class*="valueValue"]'
       ).forEach(node => {
         const n = Number(String(node.textContent || '').replace(/,/g, '').trim());
@@ -246,10 +260,12 @@
     let symbol = '';
     try {
       const titleNode = doc.querySelector(
-        '.tv-symbol-header__short-name, .pane-legend-title__description, ' +
-        '[data-name="legend-source-item"] [class*="title"], [class*="symbolTitle"]'
+        '.tv-symbol-header__short-name, [data-name="legend-series-item"] .pane-legend-title__description, [data-name="legend-series-item"] [class*="title"], .pane-legend-line:first-of-type .pane-legend-title__description, [class*="symbolTitle"]'
       );
-      symbol = (titleNode?.textContent || '').trim();
+      const raw = (titleNode?.textContent || '').trim();
+      if (raw && !isIndicatorNoise(raw)) {
+        symbol = raw;
+      }
     } catch (_) {}
 
     const candles = [];

@@ -4317,11 +4317,13 @@ function scrapeCurrentSymbol() {
   const tvTitle = document.querySelector(
     '.tv-symbol-header__short-name, ' +
     '.tv-symbol-header__first-line, ' +
-    '.pane-legend-title__description, ' +
-    '.pane-legend-line__title_name'
+    '[data-name="legend-series-item"] .pane-legend-title__description, ' +
+    '[data-name="legend-series-item"] [class*="title"], ' +
+    '.pane-legend-line:first-of-type .pane-legend-title__description'
   );
   if (tvTitle) {
-    const t = accept(tvTitle.innerText);
+    const raw = (tvTitle.innerText || tvTitle.textContent || '').trim();
+    const t = window.KPBrokerAdapters?.acceptSymbol?.(raw) || accept(raw);
     if (t) return t;
   }
 
