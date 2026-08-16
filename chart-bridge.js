@@ -1,8 +1,99 @@
 // Runs in PAGE (MAIN) world — including chart iframes (all_frames).
-// Reads ChartIQ / TradingView OHLC that live inside #chart-iframe on Kite.
+// Reads ChartIQ / TradingView OHLC that live inside #chart-iframe on Kite / Upstox / Dhan.
 (function () {
   if (window.__KP_CHART_BRIDGE__) return;
   window.__KP_CHART_BRIDGE__ = true;
+
+  // --- Intercept broker chart data stream (Zero API Key needed) ---
+  window.__KP_INTERCEPTED_CANDLES__ = window.__KP_INTERCEPTED_CANDLES__ || [];
+  window.__KP_INTERCEPTED_SYMBOL__ = window.__KP_INTERCEPTED_SYMBOL__ || '';
+  window.__KP_INTERCEPTED_TF__ = window.__KP_INTERCEPTED_TF__ || '';
+
+  function parseAndStoreInterceptedData(url, json) {
+    if (!json || typeof json !== 'object') return;
+    try {
+      let rawCandles = [];
+      if (Array.isArray(json?.data?.candles)) {
+        rawCandles = json.data.candles;
+      } else if (Array.isArray(json?.data) && Array.isArray(json.data[0])) {
+        rawCandles = json.data;
+      } else if (Array.isArray(json?.candles)) {
+        rawCandles = json.candles;
+      } else if (Array.isArray(json?.t) && Array.isArray(json?.c)) {
+        const t = json.t, o = json.o || json.c, h = json.h || json.c, l = json.l || json.c, c = json.c, v = json.v || [];
+        for (let i = 0; i < t.length; i++) {
+          rawCandles.push({ DT: t[i] * 1000, Open: o[i], High: h[i], Low: l[i], Close: c[i], Volume: v[i] || 0 });
+        }
+      }
+
+      if (rawCandles.length > 0) {
+        const parsed = dedupeSortCandles(rawCandles.map(row => {
+          if (Array.isArray(row) && row.length >= 5) {
+            let dt = row[0];
+            let startTime = typeof dt === 'string' ? Date.parse(dt) : Number(dt);
+            if (Number.isFinite(startTime) && startTime < 1e12) startTime *= 1000;
+            const o = Number(row[1]), h = Number(row[2]), l = Number(row[3]), c = Number(row[4]);
+            if (![o, h, l, c].every(n => Number.isFinite(n) && n > 0)) return null;
+            return {
+              startTime: Number.isFinite(startTime) ? startTime : Date.now(),
+              open: o,
+              high: Math.max(h, o, c),
+              low: Math.min(l, o, c),
+              close: c,
+              volume: Number(row[5]) || 0,
+              complete: true
+            };
+          }
+          return toCandle(row);
+        }).filter(Boolean));
+
+        if (parsed.length >= 2) {
+          window.__KP_INTERCEPTED_CANDLES__ = parsed;
+          // Extract symbol/tf from url if present
+          const mSym = url.match(/(?:historical-candle|historical|instruments\/historical|charts\/historical|trade\/|chart\/)(?:intraday\/)?([A-Z0-9_|%.-]+)/i);
+          if (mSym) window.__KP_INTERCEPTED_SYMBOL__ = decodeURIComponent(mSym[1]);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Hook Fetch
+  try {
+    const origFetch = window.fetch;
+    window.fetch = async function(...args) {
+      const response = await origFetch.apply(this, args);
+      try {
+        const url = String(args[0]?.url || args[0] || '');
+        if (/historical|candle|charts|datafeed|history|quotes/i.test(url)) {
+          const clone = response.clone();
+          clone.json().then(data => parseAndStoreInterceptedData(url, data)).catch(() => {});
+        }
+      } catch (_) {}
+      return response;
+    };
+  } catch (_) {}
+
+  // Hook XMLHttpRequest
+  try {
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function(method, url) {
+      this._kp_url = url;
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function() {
+      this.addEventListener('load', function() {
+        try {
+          const url = String(this._kp_url || '');
+          if (/historical|candle|charts|datafeed|history|quotes/i.test(url)) {
+            const json = JSON.parse(this.responseText);
+            parseAndStoreInterceptedData(url, json);
+          }
+        } catch (_) {}
+      });
+      return origSend.apply(this, arguments);
+    };
+  } catch (_) {}
 
   const TF_MS = {
     '1m': 60 * 1000, '2m': 2 * 60 * 1000, '3m': 3 * 60 * 1000, '5m': 5 * 60 * 1000,
@@ -268,8 +359,10 @@
       }
     } catch (_) {}
 
-    const candles = [];
-    if (legend && legend.close > 0) {
+    let candles = [];
+    if (Array.isArray(window.__KP_INTERCEPTED_CANDLES__) && window.__KP_INTERCEPTED_CANDLES__.length >= 2) {
+      candles = window.__KP_INTERCEPTED_CANDLES__;
+    } else if (legend && legend.close > 0) {
       const now = Date.now();
       candles.push({
         startTime: now - 60 * 1000,
@@ -282,14 +375,14 @@
       });
     }
 
-    if (!legend && !symbol) return null;
+    if (!legend && !symbol && !candles.length) return null;
     return {
       engine: 'tradingview',
-      symbol,
+      symbol: symbol || window.__KP_INTERCEPTED_SYMBOL__ || '',
       timeframe: null,
-      ltp: legend?.ltp || null,
+      ltp: legend?.ltp || (candles.length ? candles[candles.length - 1].close : null),
       candles,
-      source: legend?.source || 'TradingView DOM',
+      source: candles.length >= 2 ? 'TradingView live stream' : (legend?.source || 'TradingView DOM'),
       candleCount: candles.length,
       frame: window === window.top ? 'top' : 'iframe'
     };

@@ -25,7 +25,10 @@
     "https://api.dhan.co/*",
     "https://images.dhan.co/*",
     "https://query1.finance.yahoo.com/*",
-    "https://query2.finance.yahoo.com/*"
+    "https://query2.finance.yahoo.com/*",
+    "https://scanner.tradingview.com/*",
+    "https://*.tradingview.com/*",
+    "https://*.screener.in/*"
   ],
   "icons": {
     "16": "icons/icon-16.png",

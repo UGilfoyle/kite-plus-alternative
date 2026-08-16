@@ -1016,13 +1016,79 @@ async function testUpstoxConnection() {
   };
 }
 
-/** Priority: Upstox (if token) → Dhan (if token) → Yahoo */
+async function fetchTradingViewTechnicalScan(symbol, exchange) {
+  const clean = cleanEquitySymbol(symbol);
+  if (!clean) return null;
+  const isBse = (exchange || '').toUpperCase() === 'BSE';
+  const prefix = isBse ? 'BSE:' : 'NSE:';
+  const ticker = prefix + clean.replace(/\s+/g, '');
+  const body = {
+    symbols: { tickers: [ticker] },
+    columns: [
+      'Recommend.All', 'Recommend.MA', 'Recommend.Other',
+      'RSI', 'RSI[1]', 'Stoch.K', 'Stoch.D',
+      'SMA20', 'SMA50', 'SMA100', 'SMA200',
+      'EMA20', 'EMA50', 'EMA100', 'EMA200',
+      'MACD.macd', 'MACD.signal', 'close', 'change', 'volume',
+      'Pivot.M.Classic.Middle', 'Pivot.M.Classic.R1', 'Pivot.M.Classic.S1',
+      'Pivot.M.Classic.R2', 'Pivot.M.Classic.S2'
+    ]
+  };
+
+  try {
+    const res = await fetch('https://scanner.tradingview.com/india/scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    const row = json?.data?.[0]?.d;
+    if (!row || !Array.isArray(row) || row.length < 18) return null;
+    return {
+      symbol: clean,
+      overallScore: row[0],
+      maScore: row[1],
+      oscillatorScore: row[2],
+      rsi: row[3],
+      rsiPrev: row[4],
+      stochK: row[5],
+      stochD: row[6],
+      sma20: row[7],
+      sma50: row[8],
+      sma100: row[9],
+      sma200: row[10],
+      ema20: row[11],
+      ema50: row[12],
+      ema100: row[13],
+      ema200: row[14],
+      macd: row[15],
+      macdSignal: row[16],
+      close: row[17],
+      change: row[18],
+      volume: row[19],
+      pivot: row[20],
+      r1: row[21],
+      s1: row[22],
+      r2: row[23],
+      s2: row[24],
+      fetchedAt: Date.now()
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Priority: Upstox (if token) → Dhan (if token) → Yahoo + TradingView Scanner */
 async function fetchStockCandlesPreferBroker(symbol, exchange, tfId) {
+  const tvScanPromise = fetchTradingViewTechnicalScan(symbol, exchange).catch(() => null);
+
   const upstoxCreds = await getUpstoxCreds();
   if (upstoxCreds) {
     try {
       const data = await fetchUpstoxStockCandles(symbol, exchange, tfId);
-      return { ...data, upstoxStatus: 'ok', dhanStatus: 'skipped' };
+      const tvScan = await tvScanPromise;
+      return { ...data, tvScan, upstoxStatus: 'ok', dhanStatus: 'skipped' };
     } catch (err) {
       const upstoxError = err.message || String(err);
       // fall through to Dhan/Yahoo
@@ -1030,8 +1096,10 @@ async function fetchStockCandlesPreferBroker(symbol, exchange, tfId) {
       if (dhanCreds) {
         try {
           const data = await fetchDhanStockCandles(symbol, exchange, tfId);
+          const tvScan = await tvScanPromise;
           return {
             ...data,
+            tvScan,
             upstoxError,
             upstoxStatus: 'error',
             dhanStatus: 'ok',
@@ -1039,9 +1107,11 @@ async function fetchStockCandlesPreferBroker(symbol, exchange, tfId) {
           };
         } catch (dhanErr) {
           const yahoo = await fetchYahooStockCandles(symbol, exchange, tfId);
+          const tvScan = await tvScanPromise;
           return {
             ...yahoo,
-            source: 'Yahoo',
+            tvScan,
+            source: tvScan ? 'TradingView + Yahoo' : 'Yahoo',
             upstoxError,
             dhanError: dhanErr.message || String(dhanErr),
             fallback: true,
@@ -1051,9 +1121,11 @@ async function fetchStockCandlesPreferBroker(symbol, exchange, tfId) {
         }
       }
       const yahoo = await fetchYahooStockCandles(symbol, exchange, tfId);
+      const tvScan = await tvScanPromise;
       return {
         ...yahoo,
-        source: 'Yahoo',
+        tvScan,
+        source: tvScan ? 'TradingView + Yahoo' : 'Yahoo',
         upstoxError,
         fallback: true,
         upstoxStatus: 'error',
@@ -1065,25 +1137,30 @@ async function fetchStockCandlesPreferBroker(symbol, exchange, tfId) {
   const dhanCreds = await getDhanCreds();
   if (!dhanCreds) {
     const yahoo = await fetchYahooStockCandles(symbol, exchange, tfId);
+    const tvScan = await tvScanPromise;
     return {
       ...yahoo,
-      source: 'Yahoo',
+      tvScan,
+      source: tvScan ? 'TradingView + Yahoo' : 'Yahoo',
       upstoxStatus: 'skipped',
       dhanStatus: 'skipped_free'
     };
   }
   try {
     const data = await fetchDhanStockCandles(symbol, exchange, tfId);
-    return { ...data, upstoxStatus: 'skipped', dhanStatus: 'ok' };
+    const tvScan = await tvScanPromise;
+    return { ...data, tvScan, upstoxStatus: 'skipped', dhanStatus: 'ok' };
   } catch (err) {
     const yahoo = await fetchYahooStockCandles(symbol, exchange, tfId);
+    const tvScan = await tvScanPromise;
     let dhanError = err.message || String(err);
     if (/806|not subscribed|Data APIs not Subscribed/i.test(dhanError)) {
       dhanError = 'Dhan Data API not subscribed (₹499/mo required)';
     }
     return {
       ...yahoo,
-      source: 'Yahoo',
+      tvScan,
+      source: tvScan ? 'TradingView + Yahoo' : 'Yahoo',
       dhanError,
       fallback: true,
       upstoxStatus: 'skipped',
