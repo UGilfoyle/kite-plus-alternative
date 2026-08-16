@@ -2,7 +2,7 @@
 chrome.runtime.onInstalled.addListener(async (details) => {
   if (details.reason === 'install') {
     chrome.tabs.create({
-      url: chrome.runtime.getURL('mock-kite.html')
+      url: chrome.runtime.getURL('preview.html')
     });
   }
 });

@@ -270,10 +270,11 @@
     id: 'upstox',
     label: 'Upstox',
     isChartPage() {
-      return HOST === 'tv.upstox.com' ||
+      return HOST.includes('upstox.com') ||
         !!document.querySelector(
           '[data-testid*="chart"], [class*="chart-container"], [class*="ChartContainer"], ' +
-          '.chart-markup-table, iframe[src*="chart"], iframe[src*="tradingview"]'
+          '.chart-markup-table, iframe[src*="chart"], iframe[src*="tradingview"], ' +
+          '#tv_chart_container, .tv-chart-container, [id*="tradingview"]'
         );
     },
     scrapeSymbol() {
@@ -284,6 +285,9 @@
         '[class*="InstrumentHeader"] [class*="symbol"]',
         '[class*="instrument-header"] [class*="name"]',
         '[class*="symbolName"]',
+        '[class*="symbol-name"]',
+        '[class*="scrip-name"]',
+        '[class*="stock-name"]',
         '.tv-symbol-header__short-name',
         '.pane-legend-title__description',
         '[data-symbol]'
@@ -301,6 +305,9 @@
         '[data-testid="instrument-name"]',
         '[data-testid*="symbol-name"]',
         '[class*="InstrumentHeader"] [class*="symbol"]',
+        '[class*="instrument-header"] [class*="name"]',
+        '[class*="symbolName"]',
+        '[class*="symbol-name"]',
         '.tv-symbol-header__short-name',
         '.pane-legend-title__description'
       ]);
@@ -498,7 +505,7 @@
 
   function detectBroker() {
     if (HOST === 'kite.zerodha.com') return kite;
-    if (HOST === 'pro.upstox.com' || HOST === 'tv.upstox.com' || HOST.endsWith('.upstox.com')) {
+    if (HOST.includes('upstox.com')) {
       return upstox;
     }
     if (HOST.includes('dhan.co')) return dhan;

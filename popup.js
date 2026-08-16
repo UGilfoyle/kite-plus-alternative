@@ -154,7 +154,7 @@ Object.keys(toggles).forEach(key => {
 if (openSandboxBtn) {
   openSandboxBtn.addEventListener('click', () => {
     chrome.tabs.create({
-      url: chrome.runtime.getURL('mock-kite.html')
+      url: chrome.runtime.getURL('preview.html')
     });
   });
 }

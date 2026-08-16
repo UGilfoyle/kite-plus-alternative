@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KitePlus Megamind",
-  "version": "2.6.0",
+  "version": "2.6.1",
   "description": "Professional multi-broker chart analysis for Kite, Upstox and Dhan — scalp, intraday and positional signals from live panel candles.",
   "permissions": [
     "storage",
@@ -12,6 +12,10 @@
     "https://kite.zerodha.com/*",
     "https://pro.upstox.com/*",
     "https://tv.upstox.com/*",
+    "https://trade.upstox.com/*",
+    "https://login.upstox.com/*",
+    "https://*.upstox.com/*",
+    "https://upstox.com/*",
     "https://api.upstox.com/*",
     "https://api-v2.upstox.com/*",
     "https://assets.upstox.com/*",
@@ -41,6 +45,9 @@
         "https://kite.zerodha.com/*",
         "https://pro.upstox.com/*",
         "https://tv.upstox.com/*",
+        "https://trade.upstox.com/*",
+        "https://*.upstox.com/*",
+        "https://upstox.com/*",
         "https://web.dhan.co/*",
         "https://trade.dhan.co/*",
         "https://*.dhan.co/*"
@@ -57,6 +64,9 @@
         "https://kite.zerodha.com/*",
         "https://pro.upstox.com/*",
         "https://tv.upstox.com/*",
+        "https://trade.upstox.com/*",
+        "https://*.upstox.com/*",
+        "https://upstox.com/*",
         "https://web.dhan.co/*",
         "https://trade.dhan.co/*",
         "https://*.dhan.co/*"
@@ -75,6 +85,19 @@
       ],
       "run_at": "document_idle",
       "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "preview.html",
+        "mock-kite.html",
+        "content.css",
+        "icons/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

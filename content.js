@@ -10,6 +10,13 @@ let settings = {
   stockAnalysis: true
 };
 
+const HOST_NAME = window.location.hostname.toLowerCase();
+const ACTIVE_BROKER = HOST_NAME.includes('upstox.com') ? 'upstox' : (HOST_NAME.includes('dhan.co') ? 'dhan' : 'kite');
+const BROKER_LABEL = ACTIVE_BROKER === 'upstox' ? 'Upstox' : (ACTIVE_BROKER === 'dhan' ? 'Dhan' : 'Kite');
+const IS_KITE = ACTIVE_BROKER === 'kite';
+const IS_UPSTOX = ACTIVE_BROKER === 'upstox';
+const IS_DHAN = ACTIVE_BROKER === 'dhan';
+
 const BROKER_ADAPTER = window.KPBrokerAdapters?.detectBroker?.();
 let panelTheme = 'daylight'; // 'daylight' (clean white) | 'dark' (sleek slate)
 try {
@@ -25,7 +32,7 @@ try {
 function getActiveBrokerInfo() {
   const ctx = typeof getBrokerContext === 'function' ? getBrokerContext() : null;
   const host = window.location.hostname.toLowerCase();
-  const id = ctx?.brokerId || (
+  const id = ctx?.broker || ctx?.brokerId || (
     host.includes('upstox.com') ? 'upstox'
       : host.includes('dhan.co') ? 'dhan'
         : 'kite'
@@ -5112,6 +5119,9 @@ function renderSwingExtras(sw) {
       pickCard.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--kp-red, #ff1744);background:rgba(255,23,68,0.1);border-radius:4px">⛔ Stop-Loss Hit — Position closed. Wait for next clean setup.</div>';
     } else if (sw.t1Hit) {
       pickCard.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--kp-green, #00c853);background:rgba(0,200,83,0.1);border-radius:4px">✅ Target 1:2 Reached! Book profits.</div>';
+    }
+  }
+
   // Update on-chart HUD overlay
   updateChartOverlayHud(sw);
 }
