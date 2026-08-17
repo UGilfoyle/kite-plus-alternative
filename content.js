@@ -3448,8 +3448,8 @@ let investorRiskPct = 1;
 let investorCapital = 100000;
 let tradeJournal = [];
 let lastTickScrapeTime = 0;
-let signalTimeframeId = '15m';
-let signalTradeMode = 'intraday'; // 'scalp' | 'intraday' | 'swing' | 'positional'
+let signalTimeframeId = '1D';
+let signalTradeMode = 'swing'; // 'swing' | 'positional' | 'intraday'
 let swingTradeState = { direction: 0 }; // persistent state for swing engine
 let signalActiveSymbol = null;
 let signalInstrument = null;
@@ -3493,27 +3493,17 @@ async function loadSignalPrefs() {
         'trackedPositions', 'lastAnalysisActions', 'signalSectionsCollapsed',
         'signalFocusLayout', 'investorRiskPct', 'investorCapital', 'tradeJournal'
       ]);
-      const hadMode = ['scalp', 'intraday', 'swing', 'positional'].includes(res.signalTradeMode);
+      const hadMode = ['swing', 'positional', 'intraday'].includes(res.signalTradeMode);
       const hadTf = !!(res.signalTimeframe && SIGNAL_TF_MS[res.signalTimeframe]);
       if (hadMode) {
         signalTradeMode = res.signalTradeMode;
+      } else {
+        signalTradeMode = 'swing';
       }
       if (hadTf) {
         signalTimeframeId = res.signalTimeframe;
-      }
-      // Upstox charts: default toward positional 1D until the user picks a mode/TF.
-      if (ACTIVE_BROKER === 'upstox' && !hadMode) {
-        signalTradeMode = 'positional';
-        if (!hadTf) signalTimeframeId = '1D';
-        chrome.storage.local.set({
-          signalTradeMode: 'positional',
-          signalTimeframe: signalTimeframeId
-        });
-      }
-      // Stocks Intraday default is 15m — migrate old 2m default only.
-      if (signalTradeMode === 'intraday' && signalTimeframeId === '2m') {
-        signalTimeframeId = '15m';
-        chrome.storage.local.set({ signalTimeframe: '15m' });
+      } else {
+        signalTimeframeId = '1D';
       }
       if ((signalTradeMode === 'positional' || signalTradeMode === 'swing') && !isPositionalTf(signalTimeframeId)) {
         signalTimeframeId = '1D';
@@ -6028,20 +6018,17 @@ function renderSignalPanel(panel) {
     </div>
     <div class="kp-signal-body kp-focus-body">
       <div class="kp-mode-bar kp-focus-modes">
-        <button type="button" class="kp-mode-btn${signalTradeMode === 'scalp' ? ' active' : ''}" data-mode="scalp" title="Minutes · tight stops">
-          <span class="kp-mode-name">Scalp</span>
+        <button type="button" class="kp-mode-btn${signalTradeMode === 'swing' ? ' active' : ''}" data-mode="swing" title="Daily structure · 1:2 R:R (Pine Script Pro)">
+          <span class="kp-mode-name">Swing Pro</span>
         </button>
-        <button type="button" class="kp-mode-btn${signalTradeMode === 'intraday' ? ' active' : ''}" data-mode="intraday" title="Same session · no overnight">
-          <span class="kp-mode-name">Intraday</span>
-        </button>
-        <button type="button" class="kp-mode-btn${signalTradeMode === 'swing' ? ' active' : ''}" data-mode="swing" title="Daily structure · 1:2 R:R">
-          <span class="kp-mode-name">Swing</span>
-        </button>
-        <button type="button" class="kp-mode-btn${signalTradeMode === 'positional' ? ' active' : ''}" data-mode="positional" title="Multi-day · daily/weekly">
+        <button type="button" class="kp-mode-btn${signalTradeMode === 'positional' ? ' active' : ''}" data-mode="positional" title="Multi-day · daily/weekly macro">
           <span class="kp-mode-name">Positional</span>
         </button>
+        <button type="button" class="kp-mode-btn${signalTradeMode === 'intraday' ? ' active' : ''}" data-mode="intraday" title="Stock momentum · same session">
+          <span class="kp-mode-name">Intraday</span>
+        </button>
       </div>
-      <div class="kp-focus-rule" id="kp-mode-thresholds" title="Act when confluence clears these bars">${signalTradeMode === 'swing' ? `Swing Pro · Rating ≥${window.KPSwingEngine?.DEFAULTS?.minimumScore || 7.5}/10` : `Strong ≥${thr.strongAt}% · Buy ≥${thr.actionableAt}%`}</div>
+      <div class="kp-focus-rule" id="kp-mode-thresholds" title="Act when confluence clears these bars">${signalTradeMode === 'swing' ? `Swing Pro · Score ≥${window.KPSwingEngine?.DEFAULTS?.minimumScore || 8.0}/10` : `Strong ≥${thr.strongAt}% · Buy ≥${thr.actionableAt}%`}</div>
 
       <div class="kp-data-badge kp-focus-data" id="kp-data-badge">Waiting for chart…</div>
 
@@ -6091,9 +6078,7 @@ function renderSignalPanel(panel) {
         ? `Swing Pro · analyzing ${analysisTf} · Structure + 1:2 RR`
         : signalTradeMode === 'positional'
           ? `Positional · analyzing ${analysisTf}`
-          : signalTradeMode === 'scalp'
-            ? 'Scalp · keep TF tight (1m–5m)'
-            : 'Intraday · match the candle you trade'}</div>
+          : 'Intraday · match the candle you trade'}</div>
 
       <div class="kp-signal-main kp-focus-main" id="kp-signal-main">
         <div class="kp-focus-kicker">Decision</div>
@@ -6249,41 +6234,32 @@ function renderSignalPanel(panel) {
         <div class="kp-section-head">
           <div class="kp-section-head-left">
             ${kpIcon('backtest')}
-            <span class="kp-section-title">Backtest</span>
-            <span class="kp-section-hint">past only</span>
+            <span class="kp-section-title">Swing Backtest</span>
+            <span class="kp-section-hint">Pine Script 1:2 R:R</span>
           </div>
           <button type="button" class="kp-section-toggle" data-section-toggle="backtest">${sectionToggleLabel('backtest')}</button>
         </div>
         <div class="kp-section-body">
-          <div class="kp-field-hint">Hold = exit after N candles in the test. “This chart” uses the open stock; Index uses Nifty/Sensex/Bank Nifty.</div>
+          <div class="kp-field-hint">Backtests the Pine Script Structure + 1:2 R:R strategy on the open stock chart over daily history.</div>
           <div class="kp-bt-row">
-            <select id="kp-bt-index" class="kp-sr-select" title="Index for Index backtest">
-              <option value="NIFTY">Nifty</option>
-              <option value="SENSEX">Sensex</option>
-              <option value="BANKNIFTY">Bank Nifty</option>
-            </select>
-            <label class="kp-bt-hold-label" title="Exit trade after this many candles">
-              Hold (bars)
-              <input type="number" id="kp-bt-hold" class="kp-bt-hold" min="1" max="20" value="${defaultHoldBars()}" />
+            <label class="kp-bt-hold-label" title="Max holding candles before time exit (unless 1:2 Target or SL hit)">
+              Max Hold (bars)
+              <input type="number" id="kp-bt-hold" class="kp-bt-hold" min="2" max="60" value="${defaultHoldBars()}" />
             </label>
           </div>
           <div class="kp-bt-actions">
-            <button type="button" class="kp-bt-run" id="kp-bt-run-chart" title="Backtest the stock on this chart">This chart</button>
-            <button type="button" class="kp-bt-run" id="kp-bt-run" title="Backtest selected index">Index</button>
-            <button type="button" class="kp-bt-csv" id="kp-bt-csv" title="Upload your own candles CSV">CSV</button>
+            <button type="button" class="kp-bt-run" id="kp-bt-run-chart" title="Backtest the stock on this chart">▶ Run Swing Backtest (This Chart)</button>
+            <button type="button" class="kp-bt-csv" id="kp-bt-csv" title="Upload your own candles CSV">Upload CSV</button>
             <input type="file" id="kp-bt-file" accept=".csv,text/csv,text/plain" hidden />
           </div>
-          <input type="text" id="kp-bt-symbol" class="kp-sr-input kp-bt-symbol" placeholder="CSV symbol e.g. RELIANCE or SENSEX 77300 PE" />
-          <div class="kp-bt-status" id="kp-bt-status">Uses current mode + TF · Yahoo history or CSV</div>
+          <input type="text" id="kp-bt-symbol" class="kp-sr-input kp-bt-symbol" placeholder="Stock symbol e.g. MARUTI or RELIANCE" />
+          <div class="kp-bt-status" id="kp-bt-status">Click "Run Swing Backtest" to test this chart stock</div>
           <div class="kp-bt-results" id="kp-bt-results"></div>
         </div>
       </div>
 
       <div class="kp-signal-footer">
-        <button class="kp-signal-add-basket-btn" id="kp-signal-add-basket" disabled type="button">
-          Add to Express Basket
-        </button>
-        <div class="kp-signal-disclaimer">Focus · analysis only · not advice · past ≠ future</div>
+        <div class="kp-signal-disclaimer">Stock Swing Pro · Pine Script Structure + 1:2 R:R · Analysis only</div>
       </div>
     </div>
     <div class="kp-signal-resize" id="kp-signal-resize" title="Drag to resize"></div>
@@ -6819,21 +6795,30 @@ function runBacktestOnCandles(candles, meta) {
 }
 
 async function runChartStockBacktest() {
-  const inst = signalInstrument || window.KPSignalEngine.classifyInstrument(scrapeCurrentSymbol() || '');
-  if (!inst?.symbol || inst.kind !== 'equity') {
-    setBacktestStatus('Open an equity chart first', true);
+  const customSym = document.querySelector('#kp-bt-symbol')?.value?.trim();
+  const scrapedSym = scrapeCurrentSymbol() || '';
+  const targetSymbol = customSym || signalInstrument?.symbol || scrapedSym;
+  
+  if (!targetSymbol) {
+    setBacktestStatus('Please open a stock chart first (e.g. MARUTI, RELIANCE)', true);
     return;
   }
-  setBacktestStatus(`Fetching ${inst.symbol} (${signalTimeframeId})…`);
+  const cleanSym = window.KPBrokerAdapters?.acceptSymbol?.(targetSymbol) || targetSymbol.replace(/[^A-Z0-9&-]/gi, '').toUpperCase();
+  const tf = isPositionalTf(signalTimeframeId) ? signalTimeframeId : '1D';
+  setBacktestStatus(`Fetching ${cleanSym} (${tf}) daily history…`);
   try {
-    const data = await fetchStockHistory(inst.symbol, inst.exchange || 'NSE', signalTimeframeId);
-    const src = data.source || 'Yahoo';
-    setBacktestStatus(`Got ${data.candles.length} bars from ${src} · running…`);
+    const data = await fetchStockHistory(cleanSym, 'NSE', tf);
+    if (!data?.candles?.length || data.candles.length < 30) {
+      setBacktestStatus(`Not enough history for ${cleanSym} (${data?.candles?.length || 0} bars)`, true);
+      return;
+    }
+    const src = data.source || 'TradingView/Chart';
+    setBacktestStatus(`Running Pine Script Swing Pro on ${cleanSym} (${data.candles.length} bars)…`);
     runBacktestOnCandles(data.candles, {
       source: src,
-      symbol: inst.symbol,
-      underlying: inst.symbol,
-      tfId: signalTimeframeId
+      symbol: cleanSym,
+      underlying: cleanSym,
+      tfId: tf
     });
   } catch (err) {
     setBacktestStatus(err.message || String(err), true);
@@ -6841,22 +6826,7 @@ async function runChartStockBacktest() {
 }
 
 async function runIndexBacktest() {
-  const underlying = document.querySelector('#kp-bt-index')?.value || 'NIFTY';
-  const tfId = signalTimeframeId;
-  setBacktestStatus(`Fetching ${underlying} (${tfId})…`);
-  try {
-    const data = await fetchYahooCandles(underlying, tfId);
-    setBacktestStatus(`Got ${data.candles.length} bars (${data.interval}) · running…`);
-    runBacktestOnCandles(data.candles, {
-      source: 'Yahoo',
-      underlying,
-      symbol: underlying,
-      tfId,
-      yahooInterval: data.interval
-    });
-  } catch (err) {
-    setBacktestStatus(err.message || String(err), true);
-  }
+  return runChartStockBacktest();
 }
 
 function runCsvBacktest(text, fileName) {
