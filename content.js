@@ -6201,32 +6201,31 @@ function renderSignalPanel(panel) {
         <div class="kp-section-head">
           <div class="kp-section-head-left">
             ${kpIcon('backtest')}
-            <span class="kp-section-title">Swing Backtest</span>
-            <span class="kp-section-hint">Pine Script 1:2 R:R</span>
+            <span class="kp-section-title">Swing V3 Backtest</span>
+            <span class="kp-section-hint">Pine Script Engine</span>
           </div>
           <button type="button" class="kp-section-toggle" data-section-toggle="backtest">${sectionToggleLabel('backtest')}</button>
         </div>
         <div class="kp-section-body">
-          <div class="kp-field-hint">Backtests the Pine Script Structure + 1:2 R:R strategy on the open stock chart over daily history.</div>
-          <div class="kp-bt-row">
-            <label class="kp-bt-hold-label" title="Max holding candles before time exit (unless 1:2 Target or SL hit)">
-              Max Hold (bars)
-              <input type="number" id="kp-bt-hold" class="kp-bt-hold" min="2" max="60" value="${defaultHoldBars()}" />
-            </label>
+          <div style="font-size:11px;opacity:0.8;margin-bottom:8px;line-height:1.4">
+            Runs <b>Swing Trading System V3</b> (1.5R / 2.5R Target + ATR Stop) on daily candles.
           </div>
-          <div class="kp-bt-actions">
-            <button type="button" class="kp-bt-run" id="kp-bt-run-chart" title="Backtest the stock on this chart">▶ Run Swing Backtest (This Chart)</button>
-            <button type="button" class="kp-bt-csv" id="kp-bt-csv" title="Upload your own candles CSV">Upload CSV</button>
+          <div class="kp-bt-actions" style="display:flex;gap:6px;margin-bottom:8px">
+            <button type="button" class="kp-bt-run" id="kp-bt-run-chart" style="flex:1;background:var(--kp-green, #00c853);color:#000;font-weight:700;padding:8px 12px;border:none;border-radius:4px;cursor:pointer" title="Backtest the stock currently open on chart">
+              ▶ Run Backtest (This Chart)
+            </button>
+            <button type="button" class="kp-bt-csv" id="kp-bt-csv" style="padding:6px 10px;font-size:11px;background:rgba(255,255,255,0.06);color:#fff;border:1px solid rgba(255,255,255,0.1);border-radius:4px;cursor:pointer" title="Upload custom candles CSV">CSV</button>
             <input type="file" id="kp-bt-file" accept=".csv,text/csv,text/plain" hidden />
           </div>
-          <input type="text" id="kp-bt-symbol" class="kp-sr-input kp-bt-symbol" placeholder="Stock symbol e.g. MARUTI or RELIANCE" />
-          <div class="kp-bt-status" id="kp-bt-status">Click "Run Swing Backtest" to test this chart stock</div>
-          <div class="kp-bt-results" id="kp-bt-results"></div>
+          <div class="kp-bt-status" id="kp-bt-status" style="font-size:11px;padding:6px 8px;border-radius:4px;background:rgba(255,255,255,0.02);color:rgba(255,255,255,0.7);text-align:center">
+            Click "Run Backtest" to test this chart stock
+          </div>
+          <div class="kp-bt-results" id="kp-bt-results" style="margin-top:8px"></div>
         </div>
       </div>
 
       <div class="kp-signal-footer">
-        <div class="kp-signal-disclaimer">Stock Swing Pro · Pine Script Structure + 1:2 R:R · Analysis only</div>
+        <div class="kp-signal-disclaimer">Swing Trading System V3 · Pine Script Confluence Model · Analysis only</div>
       </div>
     </div>
     <div class="kp-signal-resize" id="kp-signal-resize" title="Drag to resize"></div>
@@ -6643,105 +6642,79 @@ function renderBacktestReport(report) {
     return;
   }
   if (!report.ok) {
-    box.innerHTML = `<div class="kp-bt-error">${report.error || 'Backtest failed'}</div>`;
+    box.innerHTML = `<div class="kp-bt-error" style="color:var(--kp-red, #ff1744);padding:8px;font-size:11px;background:rgba(255,23,68,0.08);border-radius:4px">${report.error || 'Backtest failed'}</div>`;
     return;
   }
 
   const s = report.stats || {};
-  const isEquityPct = report.stats?.totalReturn != null || report.trades?.[0]?.returnPct != null;
-  const holdLabel = report.holdBars != null
-    ? `hold ${report.holdBars}`
-    : (report.stats?.maxHorizonDays != null ? `horizon ${report.stats.maxHorizonDays}d` : '');
+  const isEquityPct = true;
   const meta = [
-    report.source || 'backtest',
-    report.mode || signalTradeMode,
-    `TF ${report.tfId || report.timeframe || signalTimeframeId}`,
-    `${report.candlesUsed || 0} bars`,
-    holdLabel
-  ].filter(Boolean).join(' · ');
+    `📊 Stock: <b>${report.symbol || report.underlying || 'STOCK'}</b>`,
+    `TF: ${report.tfId || '1D'}`,
+    `${report.candlesUsed || 0} Daily Bars`,
+    `Hold: max ${report.holdBars || 15} bars`
+  ].join(' · ');
 
   const tradesHtml = (report.trades || []).slice(-10).reverse().map(t => {
     const ts = t.entryTime || t.time;
     const tStr = ts
-      ? new Date(ts).toLocaleString('en-IN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' })
+      ? new Date(ts).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
       : '—';
-    const pnl = t.pnlPts != null ? t.pnlPts : t.returnPct;
+    const pnl = t.pnlPts != null ? t.returnPct : 0;
     const pnlStr = pnl == null ? '—'
-      : `${pnl > 0 ? '+' : ''}${pnl}${isEquityPct ? '%' : ''}`;
-    return `<div class="kp-bt-trade ${t.win ? 'win' : 'loss'}">
-      <span>${tStr}</span>
-      <span>${t.side || 'BUY'}</span>
-      <span>${t.strength != null ? t.strength : (t.entryScore || 0)}%</span>
-      <span>${pnlStr}</span>
-    </div>`;
+      : `${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}%`;
+    const winClass = t.win ? 'win' : 'loss';
+    const winColor = t.win ? 'var(--kp-green, #00c853)' : 'var(--kp-red, #ff1744)';
+
+    return `
+      <div class="kp-bt-trade ${winClass}" style="display:flex;flex-direction:column;gap:3px;padding:6px 8px;margin-bottom:4px;border-radius:4px;background:rgba(255,255,255,0.02);border-left:3px solid ${winColor};font-size:11px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span><b>${tStr}</b> · <span style="color:var(--kp-green, #00c853);font-weight:600">${t.setupName || 'BUY'}</span> (Score ${t.entryScore || 80}/100)</span>
+          <span style="font-weight:700;color:${winColor}">${pnlStr}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;opacity:0.75;font-size:10px">
+          <span>Entry ₹${t.entryPrice} ➔ Exit ₹${t.exitPrice}</span>
+          <span>${t.exitReason || ''}</span>
+        </div>
+      </div>
+    `;
   }).join('');
 
-  const pnlLabel = isEquityPct ? 'ret%' : 'pnl';
   box.innerHTML = `
-    <div class="kp-bt-meta">${meta}</div>
-    <div class="kp-bt-stats">
-      <div><b>${s.trades || 0}</b><span>trades</span></div>
-      <div><b>${s.winRate || 0}%</b><span>win</span></div>
-      <div><b>${s.profitFactor == null ? '—' : s.profitFactor}</b><span>PF</span></div>
-      <div><b>${s.expectancy > 0 ? '+' : ''}${s.expectancy || 0}</b><span>exp</span></div>
-      <div><b>${s.totalPnl > 0 ? '+' : ''}${s.totalPnl || 0}${isEquityPct ? '%' : ''}</b><span>${pnlLabel}</span></div>
-      <div><b>${s.maxDD || 0}</b><span>maxDD</span></div>
+    <div class="kp-bt-meta" style="font-size:11px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.06)">${meta}</div>
+    <div class="kp-bt-stats" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;margin-bottom:8px;text-align:center">
+      <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:4px"><b style="font-size:13px">${s.trades || 0}</b><br><span style="font-size:10px;opacity:0.6">Total Trades</span></div>
+      <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:4px"><b style="font-size:13px;color:${(s.winRate || 0) >= 50 ? 'var(--kp-green, #00c853)' : 'var(--kp-amber, #ffab00)'}">${s.winRate || 0}%</b><br><span style="font-size:10px;opacity:0.6">Win Rate</span></div>
+      <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:4px"><b style="font-size:13px">${s.profitFactor == null ? '—' : s.profitFactor}</b><br><span style="font-size:10px;opacity:0.6">Profit Factor</span></div>
+      <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:4px"><b style="font-size:13px;color:${(s.totalReturn || 0) > 0 ? 'var(--kp-green, #00c853)' : 'var(--kp-red, #ff1744)'}">${(s.totalReturn || 0) > 0 ? '+' : ''}${s.totalReturn || 0}%</b><br><span style="font-size:10px;opacity:0.6">Total Return</span></div>
+      <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:4px"><b style="font-size:13px">${s.expectancy > 0 ? '+' : ''}${s.expectancy || 0}%</b><br><span style="font-size:10px;opacity:0.6">Expectancy</span></div>
+      <div style="background:rgba(255,255,255,0.03);padding:6px;border-radius:4px"><b style="font-size:13px;color:var(--kp-red, #ff1744)">-${s.maxDD || 0}%</b><br><span style="font-size:10px;opacity:0.6">Max DD</span></div>
     </div>
-    <div class="kp-bt-trade-list">${tradesHtml || '<div class="kp-bt-empty">No actionable BUY signals in range</div>'}</div>
+    <div class="kp-bt-trade-list">${tradesHtml || '<div class="kp-bt-empty" style="text-align:center;padding:12px;opacity:0.6;font-size:11px">No actionable BUY signals in range</div>'}</div>
   `;
 }
 
 function runBacktestOnCandles(candles, meta) {
-  const symbol = meta.symbol || meta.underlying || 'NIFTY';
-  const instrument = window.KPSignalEngine.classifyInstrument(symbol);
+  const symbol = meta.symbol || meta.underlying || 'STOCK';
   const holdBars = getBacktestHoldBars();
   let report;
 
-  if (signalTradeMode === 'swing' && window.KPSwingEngine?.backtestSwing) {
+  if (window.KPSwingEngine?.backtestSwing) {
     report = window.KPSwingEngine.backtestSwing(candles, {
-      holdBars: holdBars || 12,
-      minimumScore: 8.0
+      holdBars: holdBars || 15,
+      buyScore: 80
     });
-  } else if (instrument.kind === 'equity' && window.KPPositionalEngine?.backtestEquity) {
-    const mode = signalTradeMode === 'positional' ? 'positional'
-      : signalTradeMode === 'scalp' ? 'scalp' : 'intraday';
-    report = window.KPPositionalEngine.backtestEquity(candles, {
-      mode,
-      timeframe: meta.tfId || signalTimeframeId,
-      maxHorizonDays: holdBars,
-      costPct: 0.1
-    });
-    // Normalize stats naming for shared renderer
-    if (report.ok && report.stats) {
-      report.stats.totalPnl = report.stats.totalReturn;
-      report.stats.expectancy = report.stats.expectancy;
-      report.stats.maxDD = report.stats.maxDrawdown;
-      report.trades = (report.trades || []).map(t => ({
-        ...t,
-        side: t.side || 'BUY',
-        strength: t.entryScore != null ? t.entryScore : (t.score || t.strength || 0),
-        pnlPts: t.returnPct != null ? t.returnPct : t.pnlPts,
-        win: t.win != null ? t.win : (t.returnPct || 0) > 0
-      }));
-      report.holdBars = holdBars;
-    }
-  } else if (!window.KPSignalEngine?.backtestSignals) {
-    setBacktestStatus('Signal engine missing', true);
-    return;
   } else {
-    report = window.KPSignalEngine.backtestSignals(candles, {
-      mode: signalTradeMode === 'positional' ? 'intraday' : signalTradeMode,
-      instrument,
-      symbol,
-      holdBars
-    });
+    setBacktestStatus('Swing engine missing', true);
+    return;
   }
 
   const full = {
     ...report,
     source: meta.source,
-    tfId: meta.tfId || signalTimeframeId,
-    underlying: meta.underlying || instrument.underlying || symbol,
+    tfId: meta.tfId || '1D',
+    symbol: symbol,
+    underlying: symbol,
     ranAt: Date.now()
   };
 
@@ -6754,7 +6727,7 @@ function runBacktestOnCandles(candles, meta) {
 
   const s = full.stats;
   setBacktestStatus(
-    `${meta.source}: ${s.trades} trades · ${s.winRate}% win · PF ${s.profitFactor}`,
+    `✓ ${symbol}: ${s.trades} trades · ${s.winRate}% win · PF ${s.profitFactor} · Net ${s.totalReturn > 0 ? '+' : ''}${s.totalReturn}%`,
     false
   );
   renderBacktestReport(full);
@@ -6771,25 +6744,37 @@ async function runChartStockBacktest() {
     return;
   }
   const cleanSym = window.KPBrokerAdapters?.acceptSymbol?.(targetSymbol) || targetSymbol.replace(/[^A-Z0-9&-]/gi, '').toUpperCase();
-  const tf = isPositionalTf(signalTimeframeId) ? signalTimeframeId : '1D';
-  setBacktestStatus(`Fetching ${cleanSym} (${tf}) daily history…`);
+  const tf = '1D';
+  setBacktestStatus(`Loading ${cleanSym} daily candles…`);
+
+  // 1. First priority: check if in-memory chart candles are available
+  let candlesToUse = [];
+  if (Array.isArray(window.__KP_INTERCEPTED_CANDLES__) && window.__KP_INTERCEPTED_CANDLES__.length >= 40) {
+    candlesToUse = window.__KP_INTERCEPTED_CANDLES__;
+  } else if (signalCandleCollector?.getCandles()?.length >= 40) {
+    candlesToUse = signalCandleCollector.getCandles();
+  }
+
+  // 2. Fetch full daily historical series
   try {
     const data = await fetchStockHistory(cleanSym, 'NSE', tf);
-    if (!data?.candles?.length || data.candles.length < 30) {
-      setBacktestStatus(`Not enough history for ${cleanSym} (${data?.candles?.length || 0} bars)`, true);
-      return;
+    if (data?.candles?.length && data.candles.length >= 35) {
+      candlesToUse = data.candles;
     }
-    const src = data.source || 'TradingView/Chart';
-    setBacktestStatus(`Running Pine Script Swing Pro on ${cleanSym} (${data.candles.length} bars)…`);
-    runBacktestOnCandles(data.candles, {
-      source: src,
-      symbol: cleanSym,
-      underlying: cleanSym,
-      tfId: tf
-    });
-  } catch (err) {
-    setBacktestStatus(err.message || String(err), true);
+  } catch (_) {}
+
+  if (!candlesToUse || candlesToUse.length < 35) {
+    setBacktestStatus(`Need at least 35 daily candles for ${cleanSym} (have ${candlesToUse?.length || 0})`, true);
+    return;
   }
+
+  setBacktestStatus(`Running Pine Script Swing V3 on ${cleanSym} (${candlesToUse.length} bars)…`);
+  runBacktestOnCandles(candlesToUse, {
+    source: 'Daily Chart',
+    symbol: cleanSym,
+    underlying: cleanSym,
+    tfId: tf
+  });
 }
 
 async function runIndexBacktest() {
@@ -6797,13 +6782,13 @@ async function runIndexBacktest() {
 }
 
 function runCsvBacktest(text, fileName) {
-  if (!window.KPSignalEngine?.parseCandleCSV) {
-    setBacktestStatus('CSV parser missing', true);
+  if (!window.KPSwingEngine?.backtestSwing) {
+    setBacktestStatus('Swing engine missing', true);
     return;
   }
-  const parsed = window.KPSignalEngine.parseCandleCSV(text);
-  if (parsed.error && (!parsed.candles || parsed.candles.length < 12)) {
-    setBacktestStatus(parsed.error, true);
+  const parsed = window.KPSignalEngine?.parseCandleCSV ? window.KPSignalEngine.parseCandleCSV(text) : null;
+  if (!parsed || (parsed.error && (!parsed.candles || parsed.candles.length < 12))) {
+    setBacktestStatus(parsed?.error || 'Invalid CSV format', true);
     return;
   }
   const custom = document.querySelector('#kp-bt-symbol')?.value?.trim();
@@ -6813,7 +6798,7 @@ function runCsvBacktest(text, fileName) {
     source: 'CSV',
     symbol,
     underlying: symbol,
-    tfId: signalTimeframeId
+    tfId: '1D'
   });
 }
 
