@@ -5972,10 +5972,11 @@ function renderSignalPanel(panel) {
     <div class="kp-signal-header" id="kp-signal-toggle">
       <div class="kp-signal-header-left">
         <span class="kp-signal-mark">M</span>
-        <span class="kp-signal-header-title">Megamind</span>
+        <span class="kp-signal-header-title">Megamind Pro</span>
         <span class="kp-broker-chip">${activeBroker.label}</span>
       </div>
       <div class="kp-signal-header-right">
+        <button type="button" class="kp-signal-info-btn" id="kp-signal-info-toggle" title="How to read Swing V3 system" style="background:rgba(37,99,235,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3);border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;cursor:pointer">ℹ️ Guide</button>
         <button type="button" class="kp-signal-theme-btn" id="kp-signal-theme-toggle" title="Toggle Daylight / Dark Theme">${panelTheme === 'dark' ? '☀️ Day' : '🌙 Dark'}</button>
         <button type="button" class="kp-signal-collapse-btn" id="kp-signal-collapse" title="${signalPanelCollapsed ? 'Expand panel' : 'Collapse panel'}">${signalPanelCollapsed ? 'Expand' : 'Collapse'}</button>
         <button type="button" class="kp-signal-center-btn" id="kp-signal-center" title="Dock right">Dock</button>
@@ -5985,8 +5986,8 @@ function renderSignalPanel(panel) {
     </div>
     <div class="kp-signal-body kp-focus-body">
       <div class="kp-mode-bar kp-focus-modes">
-        <button type="button" class="kp-mode-btn${signalTradeMode === 'swing' ? ' active' : ''}" data-mode="swing" title="Daily structure · 1:2 R:R (Pine Script Pro)">
-          <span class="kp-mode-name">Swing Pro</span>
+        <button type="button" class="kp-mode-btn${signalTradeMode === 'swing' ? ' active' : ''}" data-mode="swing" title="Swing Trading System V3 · 100-Point Confluence Model">
+          <span class="kp-mode-name">Swing V3</span>
         </button>
         <button type="button" class="kp-mode-btn${signalTradeMode === 'positional' ? ' active' : ''}" data-mode="positional" title="Multi-day · daily/weekly macro">
           <span class="kp-mode-name">Positional</span>
@@ -5995,25 +5996,53 @@ function renderSignalPanel(panel) {
           <span class="kp-mode-name">Intraday</span>
         </button>
       </div>
-      <div class="kp-focus-rule" id="kp-mode-thresholds" title="Act when confluence clears these bars">${signalTradeMode === 'swing' ? `Swing Pro · Score ≥${window.KPSwingEngine?.DEFAULTS?.minimumScore || 8.0}/10` : `Strong ≥${thr.strongAt}% · Buy ≥${thr.actionableAt}%`}</div>
+      <div class="kp-focus-rule" id="kp-mode-thresholds" title="Act when confluence clears these bars">Pine Script Swing V3 · Score ≥80/100 · 1.5R & 2.5R Targets</div>
 
       <div class="kp-data-badge kp-focus-data" id="kp-data-badge">Waiting for chart…</div>
 
-      <div class="kp-panel-section${sectionCollapsedClass('guide')}" data-section="guide">
+      <div class="kp-panel-section${sectionCollapsedClass('guide')}" data-section="guide" id="kp-guide-section">
         <div class="kp-section-head">
           <div class="kp-section-head-left">
             ${kpIcon('guide')}
-            <span class="kp-section-title">How to read</span>
-            <span class="kp-section-hint">decision flow</span>
+            <span class="kp-section-title">ℹ️ System User Guide</span>
+            <span class="kp-section-hint">how to read & trade</span>
           </div>
           <button type="button" class="kp-section-toggle" data-section-toggle="guide">${sectionToggleLabel('guide')}</button>
         </div>
         <div class="kp-section-body">
-          <div class="kp-read-guide">
-            <p><strong>1</strong> Read the decision — BUY / WAIT / HOLD / EXIT.</p>
-            <p><strong>2</strong> Confirm checklist and levels (Stop · T1–T3).</p>
-            <p><strong>3</strong> Size with risk % (education only).</p>
-            <p><strong>4</strong> Journal outcomes to improve your process.</p>
+          <div class="kp-read-guide" style="font-size:11px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
+            <div style="background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:4px;border-left:3px solid var(--kp-green, #00c853)">
+              <b style="color:var(--kp-green, #00c853)">1. Signal Badges:</b>
+              <div>• <b style="color:var(--kp-green, #00c853)">BUY</b> (Score ≥80): High-confluence trigger (Breakout, 20/50 Cross, Pullback, or Pattern).</div>
+              <div>• <b style="color:var(--kp-amber, #ffab00)">WATCH</b> (Score 70-79): Setup is forming, wait for breakout/volume.</div>
+              <div>• <b style="color:rgba(255,255,255,0.5)">AVOID</b> (Score &lt;70): Bearish structure or low confluence.</div>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:4px;border-left:3px solid #3b82f6">
+              <b style="color:#3b82f6">2. 100-Point Confluence Scoring:</b>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 6px;margin-top:2px;font-size:10px">
+                <span>• Trend: <b>25 pts</b> (EMA 20/50/200)</span>
+                <span>• Structure: <b>20 pts</b> (HH/HL Break)</span>
+                <span>• Pattern: <b>15 pts</b> (Inv H&S, Cup)</span>
+                <span>• Momentum: <b>15 pts</b> (RSI+MACD)</span>
+                <span>• Volume: <b>10 pts</b> (≥1.5x SMA)</span>
+                <span>• RS Nifty: <b>10 pts</b> (63d outperf)</span>
+                <span>• Candle: <b>5 pts</b> (Engulf/Hammer)</span>
+                <span style="color:var(--kp-red, #ff1744)">• Penalty: <b>-15 pts</b> (H&S/Top)</span>
+              </div>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:4px;border-left:3px solid var(--kp-amber, #ffab00)">
+              <b style="color:var(--kp-amber, #ffab00)">3. 1.5R / 2.5R Trade Management:</b>
+              <div>• <b>Stop Loss (SL)</b>: 20-day Structural Swing Low - 0.25 ATR.</div>
+              <div>• <b>Target 1 (1.5R)</b>: Book 50% qty when price gains 1.5x risk.</div>
+              <div>• <b>Target 2 (2.5R)</b>: Trail remaining 50% qty to 2.5x risk.</div>
+            </div>
+
+            <div style="background:rgba(255,255,255,0.03);padding:6px 8px;border-radius:4px;border-left:3px solid #a855f7">
+              <b style="color:#a855f7">4. 1-Click Strategy Backtester:</b>
+              <div>Click <b>"▶ Run Backtest"</b> below to walk-forward simulate this exact Pine Script on the open stock chart!</div>
+            </div>
           </div>
         </div>
       </div>
@@ -6402,6 +6431,25 @@ function bindSignalPanelEvents(panel) {
     if (chevron) chevron.textContent = '▲';
     if (typeof chrome !== 'undefined' && chrome.storage) {
       chrome.storage.local.set({ signalPanelCollapsed: true });
+    }
+  });
+
+  panel.querySelector('#kp-signal-info-toggle')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const guideSec = panel.querySelector('#kp-guide-section');
+    if (!guideSec) return;
+    const isCollapsed = guideSec.classList.contains('is-collapsed');
+    if (isCollapsed) {
+      guideSec.classList.remove('is-collapsed');
+      signalSectionsCollapsed['guide'] = false;
+      const toggleBtn = guideSec.querySelector('.kp-section-toggle');
+      if (toggleBtn) toggleBtn.textContent = 'Collapse';
+      guideSec.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } else {
+      guideSec.classList.add('is-collapsed');
+      signalSectionsCollapsed['guide'] = true;
+      const toggleBtn = guideSec.querySelector('.kp-section-toggle');
+      if (toggleBtn) toggleBtn.textContent = 'Expand';
     }
   });
 

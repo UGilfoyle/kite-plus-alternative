@@ -571,6 +571,7 @@
             <span class="kp-broker-chip">${brokerLabel}</span>
           </div>
           <div class="kp-signal-header-right">
+            <button type="button" class="kp-signal-info-btn" id="preview-guide-btn" title="How to read Swing V3 system" style="background:rgba(37,99,235,0.15);color:#3b82f6;border:1px solid rgba(59,130,246,0.3);border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;cursor:pointer">ℹ️ Guide</button>
             <button type="button" class="kp-signal-theme-btn" id="preview-theme-btn" title="Toggle Daylight / Dark Theme">${currentTheme === 'dark' ? '☀️ Day' : '🌙 Dark'}</button>
             <span class="kp-signal-header-badge ${isBuy ? 'signal-strong-ce' : (sw.action === 'WATCH' ? 'signal-wait' : 'no-signal')}">
               ${sw.action}
@@ -591,6 +592,15 @@
             <div class="kp-focus-meta-item"><span class="kp-meta-label">Setup</span><span class="kp-meta-value">${sw.setupName || 'None'}</span></div>
             <div class="kp-focus-meta-item"><span class="kp-meta-label">Bars</span><span class="kp-meta-value">${candles.length} Daily</span></div>
             <div class="kp-focus-meta-item"><span class="kp-meta-label">LTP</span><span class="kp-meta-value">${document.getElementById('disp-price').textContent}</span></div>
+          </div>
+
+          <!-- Interactive User Guide -->
+          <div id="preview-guide-box" style="display:none;background:var(--kp-panel-surface);border:1px solid #3b82f6;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;line-height:1.4">
+            <div style="font-weight:700;color:#3b82f6;margin-bottom:4px">📘 How to Read Swing V3:</div>
+            <div>• <b>🟢 BUY (≥80)</b>: High confluence trigger. Enter at LTP.</div>
+            <div>• <b>⏳ WATCH (70-79)</b>: Setup is forming, wait for breakout.</div>
+            <div>• <b>⛔ AVOID (&lt;70)</b>: Low confluence / bearish pattern.</div>
+            <div>• <b>SL</b>: Structural Low - 0.25 ATR | <b>T1</b>: 1.5R (50%) | <b>T2</b>: 2.5R (50%)</div>
           </div>
 
           <div class="kp-signal-main kp-focus-main">
@@ -654,6 +664,12 @@
         currentTheme = currentTheme === 'dark' ? 'daylight' : 'dark';
         document.getElementById('sel-mode').value = currentTheme;
         refreshSimulator();
+      });
+
+      // Mount guide toggle handler
+      document.getElementById('preview-guide-btn')?.addEventListener('click', () => {
+        const box = document.getElementById('preview-guide-box');
+        if (box) box.style.display = box.style.display === 'none' ? 'block' : 'none';
       });
     }
 
