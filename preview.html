@@ -505,7 +505,7 @@
       document.body.className = currentTheme === 'dark' ? 'dark-theme' : '';
 
       // Run swing signal
-      const swingRes = window.KPSwingEngine.generateSwingSignal(currentCandles, { minimumScore: 8.0 });
+      const swingRes = window.KPSwingEngine.generateSwingSignal(currentCandles);
       drawChart(currentCandles, swingRes);
 
       // Render On-Chart HUD
@@ -520,22 +520,28 @@
       const hud = document.getElementById('preview-chart-hud');
       if (!hud) return;
 
-      const trade = sw.trade || sw.signalTrade;
-      if (trade) {
-        const isLong = trade.direction === 'LONG';
+      const trade = sw.trade;
+      if (sw.action === 'BUY' && trade) {
         hud.innerHTML = `
-          <div class="kp-chart-hud-pill ${isLong ? 'long' : 'short'}">
-            <span>${isLong ? '🎯' : '🔻'} <b>${sym}</b> · ${isLong ? 'BUY ABOVE' : 'SELL BELOW'} ₹${trade.entry.toFixed(2)}</span>
+          <div class="kp-chart-hud-pill long">
+            <span>🎯 <b>${sym}</b> · BUY ABOVE ₹${trade.entry.toFixed(2)} (${sw.setupName})</span>
             <span class="hud-level hud-sl">SL: ₹${trade.stopLoss.toFixed(2)}</span>
-            <span class="hud-level hud-target">T1 (1:2): ₹${trade.target1.toFixed(2)}</span>
-            <span class="hud-score">Score ${trade.rating}/10</span>
+            <span class="hud-level hud-target">T1 (1.5R): ₹${trade.target1.toFixed(2)}</span>
+            <span class="hud-score">Score ${sw.score}/100</span>
+          </div>
+        `;
+      } else if (sw.action === 'WATCH') {
+        hud.innerHTML = `
+          <div class="kp-chart-hud-pill wait" style="border-color:var(--amber)">
+            <span>⏳ <b>${sym}</b> · WATCH — Confluence Building</span>
+            <span class="hud-score">Score ${sw.score}/100</span>
           </div>
         `;
       } else {
         hud.innerHTML = `
           <div class="kp-chart-hud-pill wait">
-            <span>⏳ <b>${sym}</b> · Waiting for high-confluence setup</span>
-            <span class="hud-score">SWING PRO</span>
+            <span>⛔ <b>${sym}</b> · AVOID — Waiting for Bullish Confluence</span>
+            <span class="hud-score">Score ${sw.score}/100</span>
           </div>
         `;
       }
@@ -546,113 +552,95 @@
       const mount = document.getElementById('megamind-mount');
       if (!mount) return;
 
-      const trade = sw.trade || sw.signalTrade;
-      const d = sw.dashboard;
+      const trade = sw.trade;
+      const scores = sw.scores || {};
+      const ind = sw.indicators || {};
       const themeClass = `kp-theme-${currentBroker}`;
       const modeClass = currentTheme === 'dark' ? 'kp-mode-dark' : 'kp-mode-daylight';
       mount.className = `kp-signal-panel ${themeClass} ${modeClass}`;
 
-      const dirColor = trade ? (trade.direction === 'LONG' ? 'var(--kp-green, #00c853)' : 'var(--kp-red, #ff1744)') : 'var(--kp-accent)';
-      const isPass = sw.action === 'LONG' || sw.action === 'SHORT';
+      const isBuy = sw.action === 'BUY';
+      const actionColor = isBuy ? 'var(--kp-green, #00c853)' : (sw.action === 'WATCH' ? 'var(--amber, #d97706)' : 'var(--text-muted)');
       const brokerLabel = BROKER_NAMES[currentBroker] || 'Kite';
 
       mount.innerHTML = `
         <div class="kp-signal-header">
           <div class="kp-signal-header-left">
             <span class="kp-signal-mark">M</span>
-            <span class="kp-signal-header-title">Megamind</span>
+            <span class="kp-signal-header-title">Megamind Pro</span>
             <span class="kp-broker-chip">${brokerLabel}</span>
           </div>
           <div class="kp-signal-header-right">
             <button type="button" class="kp-signal-theme-btn" id="preview-theme-btn" title="Toggle Daylight / Dark Theme">${currentTheme === 'dark' ? '☀️ Day' : '🌙 Dark'}</button>
-            <span class="kp-signal-header-badge ${isPass ? (trade?.direction === 'LONG' ? 'signal-strong-ce' : 'signal-strong-pe') : 'no-signal'}">
-              ${sw.status}
+            <span class="kp-signal-header-badge ${isBuy ? 'signal-strong-ce' : (sw.action === 'WATCH' ? 'signal-wait' : 'no-signal')}">
+              ${sw.action}
             </span>
           </div>
         </div>
 
         <div class="kp-signal-body kp-focus-body">
           <div class="kp-mode-bar kp-focus-modes">
-            <button type="button" class="kp-mode-btn" data-m="scalp"><span class="kp-mode-name">Scalp</span></button>
-            <button type="button" class="kp-mode-btn" data-m="intraday"><span class="kp-mode-name">Intraday</span></button>
-            <button type="button" class="kp-mode-btn active" data-m="swing"><span class="kp-mode-name">Swing</span></button>
+            <button type="button" class="kp-mode-btn active" data-m="swing"><span class="kp-mode-name">Swing V3</span></button>
             <button type="button" class="kp-mode-btn" data-m="positional"><span class="kp-mode-name">Positional</span></button>
+            <button type="button" class="kp-mode-btn" data-m="intraday"><span class="kp-mode-name">Intraday</span></button>
           </div>
-          <div class="kp-focus-rule">Swing Pro · Structure + 1:2 RR · Rating ≥8.0/10</div>
+          <div class="kp-focus-rule">Pine Script Swing V3 · 100-Point Confluence Model</div>
 
           <div class="kp-focus-meta">
-            <div class="kp-focus-meta-item"><span class="kp-meta-label">Symbol</span><span class="kp-meta-value">${sym}</span></div>
-            <div class="kp-focus-meta-item"><span class="kp-meta-label">Broker</span><span class="kp-meta-value">${brokerLabel}</span></div>
-            <div class="kp-focus-meta-item"><span class="kp-meta-label">Bars</span><span class="kp-meta-value">${candles.length}/45</span></div>
+            <div class="kp-focus-meta-item"><span class="kp-meta-label">Stock</span><span class="kp-meta-value">${sym}</span></div>
+            <div class="kp-focus-meta-item"><span class="kp-meta-label">Setup</span><span class="kp-meta-value">${sw.setupName || 'None'}</span></div>
+            <div class="kp-focus-meta-item"><span class="kp-meta-label">Bars</span><span class="kp-meta-value">${candles.length} Daily</span></div>
             <div class="kp-focus-meta-item"><span class="kp-meta-label">LTP</span><span class="kp-meta-value">${document.getElementById('disp-price').textContent}</span></div>
           </div>
 
           <div class="kp-signal-main kp-focus-main">
-            <div class="kp-focus-kicker">Decision</div>
-            <div class="kp-signal-main-badge ${isPass ? (trade?.direction === 'LONG' ? 'ce strong' : 'pe strong') : 'neutral'}">
-              <span>${sw.status === 'BUY / LONG' ? 'BUY / LONG' : (sw.status === 'SELL / SHORT' ? 'SELL / SHORT' : 'WAIT — No Clean Edge')}</span>
+            <div class="kp-focus-kicker">Signal Decision</div>
+            <div class="kp-signal-main-badge ${isBuy ? 'ce strong' : (sw.action === 'WATCH' ? 'wait' : 'neutral')}">
+              <span>${sw.action === 'BUY' ? '🟢 BUY — Setup: ' + sw.setupName : (sw.action === 'WATCH' ? '⏳ WATCH — Score ' + sw.score + '/100' : '⛔ AVOID — Score ' + sw.score + '/100')}</span>
             </div>
             
-            <div class="kp-brain-row">
-              <span>Long ${sw.longScore}/10</span>
-              <span>Short ${sw.shortScore}/10</span>
-              <span>${d?.trend || '—'}</span>
+            <div class="kp-brain-row" style="display:flex;justify-content:space-between;padding:4px 0;font-size:11px;opacity:0.85">
+              <span>Score: <b>${sw.score}/100</b></span>
+              <span>Pattern: <b>${sw.patternName || 'None'}</b></span>
+              <span>Regime: <b style="color:#00a843">BULLISH</b></span>
             </div>
 
-            <!-- Trade Card -->
+            <!-- Trade Levels Card -->
             <div id="kp-equity-levels">
-              ${trade ? `
-                <div class="kp-swing-trade-card" style="border:1px solid ${trade.direction === 'LONG' ? 'rgba(0,200,83,0.35)' : 'rgba(255,23,68,0.35)'};border-left:4px solid ${dirColor};padding:10px 12px;margin:8px 0;border-radius:6px;background:var(--kp-panel-surface)">
-                  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                    <span style="font-weight:700;font-size:13px;color:${dirColor}">🎯 ${trade.direction} · 1:2 R:R</span>
-                    <span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.06);color:${dirColor}">Score ${trade.rating}/10</span>
-                  </div>
-                  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px;background:rgba(0,0,0,0.04);padding:6px 8px;border-radius:4px">
-                    <div><span style="opacity:0.6;font-size:10px">Entry</span><br><strong style="font-size:12px">₹${trade.entry.toFixed(2)}</strong></div>
-                    <div><span style="opacity:0.6;font-size:10px">Stop Loss</span><br><strong style="color:var(--kp-red, #ff1744);font-size:12px">₹${trade.stopLoss.toFixed(2)}</strong></div>
-                    <div><span style="opacity:0.6;font-size:10px">Target 1:2</span><br><strong style="color:var(--kp-green, #00c853);font-size:12px">₹${trade.target1.toFixed(2)}</strong></div>
-                  </div>
-                  <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.7;margin-top:6px">
-                    <span>Risk: <b style="color:var(--kp-red, #ff1744)">₹${trade.risk.toFixed(2)}</b></span>
-                    <span>Reward: <b style="color:var(--kp-green, #00c853)">₹${trade.reward.toFixed(2)}</b></span>
-                    <span>Ratio: <b>${trade.rr}</b></span>
-                  </div>
+              <div class="kp-swing-trade-card" style="border:1px solid ${isBuy ? 'rgba(0,200,83,0.35)' : 'rgba(255,255,255,0.1)'};border-left:4px solid ${actionColor};padding:10px 12px;margin:8px 0;border-radius:6px;background:var(--kp-panel-surface)">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <span style="font-weight:700;font-size:12px;color:${actionColor}">🎯 Dynamic Levels (1.5R / 2.5R)</span>
+                  <span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(0,0,0,0.06);color:${actionColor}">Score ${sw.score}/100</span>
                 </div>
-              ` : `
-                <div style="font-size:11px;opacity:0.6;padding:8px 10px;border-radius:4px;background:var(--kp-panel-surface);border:1px dashed var(--kp-panel-border);margin:6px 0;text-align:center">
-                  ⏳ Waiting for high-confluence setup (Score ≥ 8.0 + Breakout/Pullback)
+                <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;font-size:10px;background:rgba(0,0,0,0.04);padding:6px;border-radius:4px;text-align:center">
+                  <div><span style="opacity:0.6">Entry</span><br><strong style="font-size:11px">₹${trade.entry.toFixed(2)}</strong></div>
+                  <div><span style="opacity:0.6">SL</span><br><strong style="color:var(--red, #dc2626);font-size:11px">₹${trade.stopLoss.toFixed(2)}</strong></div>
+                  <div><span style="opacity:0.6">T1 (1.5R)</span><br><strong style="color:var(--green, #00a843);font-size:11px">₹${trade.target1.toFixed(2)}</strong></div>
+                  <div><span style="opacity:0.6">T2 (2.5R)</span><br><strong style="color:var(--green, #00a843);font-size:11px">₹${trade.target2.toFixed(2)}</strong></div>
                 </div>
-              `}
-            </div>
-
-            <!-- Indicator Dashboard -->
-            ${d ? `
-              <div class="kp-swing-dashboard" style="font-size:11px;margin:6px 0;padding:10px;border-radius:6px;background:var(--kp-panel-surface);border:1px solid var(--kp-panel-border)">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--kp-panel-border);padding-bottom:4px">
-                  <span style="font-weight:700;font-size:12px">Swing Pro Indicators</span>
-                  <span style="font-size:10px;font-weight:700;color:${d.trendBias === 'bullish' ? '#00a843' : (d.trendBias === 'bearish' ? '#dc2626' : '#d97706')}">${d.trend}</span>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;line-height:1.5">
-                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">EMA Stack</span><strong>${d.emaStack}</strong></div>
-                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">RSI(14)</span><strong>${d.rsi ?? '—'}</strong></div>
-                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Volume</span><strong>${d.volumeRatio != null ? d.volumeRatio + 'x' : '—'}</strong></div>
-                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">ADX (14)</span><strong>${d.adx ?? '—'}</strong></div>
-                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">DI+ / DI-</span><strong>${d.diPlus ?? '—'}/${d.diMinus ?? '—'}</strong></div>
-                  <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">ATR (14)</span><strong>${d.atr ?? '—'}</strong></div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.75;margin-top:6px">
+                  <span>Risk: <b style="color:var(--red, #dc2626)">₹${trade.risk.toFixed(2)} (${trade.riskPct}%)</b></span>
+                  <span>Penalty: <b style="color:var(--red, #dc2626)">-${sw.bearishPenalty} pts</b></span>
                 </div>
               </div>
-            ` : ''}
+            </div>
 
-            <!-- Checklist -->
-            <div style="margin:8px 0;background:var(--kp-panel-surface);padding:8px;border-radius:6px;border:1px solid var(--kp-panel-border)">
-              <div style="font-size:11px;font-weight:700;margin-bottom:6px;opacity:0.8">5-Gate Decision Checklist:</div>
-              ${sw.checklist.map(c => `
-                <div style="display:flex;gap:8px;align-items:center;font-size:11px;padding:2px 0">
-                  <span style="color:${c.pass ? '#00a843' : '#dc2626'};font-weight:800;width:14px;text-align:center">${c.pass ? '✓' : '✗'}</span>
-                  <span style="flex:1;font-weight:600">${c.label}</span>
-                  <span style="font-size:10px;opacity:0.6">${c.detail}</span>
-                </div>
-              `).join('')}
+            <!-- Confluence Score Breakdown -->
+            <div class="kp-swing-dashboard" style="font-size:11px;margin:6px 0;padding:10px;border-radius:6px;background:var(--kp-panel-surface);border:1px solid var(--kp-panel-border)">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid var(--kp-panel-border);padding-bottom:4px">
+                <span style="font-weight:700;font-size:12px">100-Pt Confluence Score</span>
+                <span style="font-size:11px;font-weight:700;color:${sw.score >= 80 ? '#00a843' : (sw.score >= 70 ? '#d97706' : 'inherit')}">Total: ${sw.score}/100</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;line-height:1.5">
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Trend (25)</span><strong>${scores.trend?.score ?? 0} pts</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Structure (20)</span><strong>${scores.structure?.score ?? 0} pts</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Pattern (15)</span><strong>${scores.pattern?.score ?? 0} pts</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Momentum (15)</span><strong>${scores.momentum?.score ?? 0} pts</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Volume (10)</span><strong>${scores.volume?.score ?? 0} pts</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">RS vs Nifty (10)</span><strong>${scores.relativeStrength?.score ?? 0} pts</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Candle (5)</span><strong>${scores.candle?.score ?? 0} pts</strong></div>
+                <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Penalty</span><strong style="color:var(--red, #dc2626)">-${sw.bearishPenalty ?? 0} pts</strong></div>
+              </div>
             </div>
 
             <!-- Backtest Section -->
@@ -671,15 +659,28 @@
 
     // Run Backtest
     function runBacktestDemo() {
-      const report = window.KPSwingEngine.backtestSwing(currentCandles, { holdBars: 10, minimumScore: 8.0 });
+      const report = window.KPSwingEngine.backtestSwing(currentCandles, { holdBars: 15, buyScore: 80 });
       const btBox = document.getElementById('bt-output-box');
       if (!btBox) return;
 
       const s = report.stats;
+      const tradesHtml = (report.trades || []).slice(-4).reverse().map(t => {
+        const d1 = new Date(t.entryTime).toLocaleDateString('en-IN');
+        const d2 = new Date(t.exitTime).toLocaleDateString('en-IN');
+        const winColor = t.win ? '#00a843' : '#dc2626';
+        const pnl = t.returnPct > 0 ? `+${t.returnPct}%` : `${t.returnPct}%`;
+        return `
+          <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid rgba(0,0,0,0.05);font-size:10px">
+            <span><b>${t.setupName}</b> (${d1})</span>
+            <span style="font-weight:700;color:${winColor}">${pnl} · ${t.exitReason}</span>
+          </div>
+        `;
+      }).join('');
+
       btBox.innerHTML = `
         <div style="background:var(--kp-panel-surface);border:1px solid var(--accent);border-radius:6px;padding:10px;margin-top:8px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-weight:700;font-size:12px;color:var(--accent)">📊 Backtest Report (1:2 R:R Walk-Forward)</span>
+            <span style="font-weight:700;font-size:12px;color:var(--accent)">📊 Pine Script V3 Backtest Report</span>
             <span style="font-size:10px;opacity:0.7">${report.candlesUsed} bars</span>
           </div>
           <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:6px;text-align:center;font-size:11px">
@@ -687,14 +688,19 @@
               <b style="font-size:14px">${s.trades}</b><br><span style="opacity:0.6;font-size:10px">Trades</span>
             </div>
             <div style="background:rgba(0,0,0,0.04);padding:6px;border-radius:4px">
-              <b style="font-size:14px;color:${s.winRate >= 60 ? '#00a843' : '#d97706'}">${s.winRate}%</b><br><span style="opacity:0.6;font-size:10px">Win Rate</span>
+              <b style="font-size:14px;color:${s.winRate >= 50 ? '#00a843' : '#d97706'}">${s.winRate}%</b><br><span style="opacity:0.6;font-size:10px">Win Rate</span>
             </div>
             <div style="background:rgba(0,0,0,0.04);padding:6px;border-radius:4px">
-              <b style="font-size:14px;color:#00a843">${s.totalReturn > 0 ? '+' : ''}${s.totalReturn}%</b><br><span style="opacity:0.6;font-size:10px">Net Return</span>
+              <b style="font-size:14px;color:${s.totalReturn > 0 ? '#00a843' : '#dc2626'}">${s.totalReturn > 0 ? '+' : ''}${s.totalReturn}%</b><br><span style="opacity:0.6;font-size:10px">Net Return</span>
             </div>
           </div>
-          <div style="margin-top:8px;font-size:10px;opacity:0.7">
-            Wins: <b>${s.wins}</b> · Losses: <b>${s.losses}</b> · Profit Factor: <b>${s.profitFactor}</b> · MaxDD: <b>${s.maxDD}%</b>
+          <div style="margin-top:8px;font-size:10px;opacity:0.75;display:flex;justify-content:space-between">
+            <span>PF: <b>${s.profitFactor}</b></span>
+            <span>Max DD: <b style="color:#dc2626">-${s.maxDD}%</b></span>
+            <span>Avg Win: <b>+${s.avgWin}%</b></span>
+          </div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(0,0,0,0.08)">
+            ${tradesHtml || '<div style="font-size:10px;opacity:0.6;text-align:center">No trades taken</div>'}
           </div>
         </div>
       `;
