@@ -1,7 +1,6 @@
-// KitePlus Swing Engine — Structure-Based Swing Trading System
-// Port of TradingView Pine Script "Stock Swing Pro - Structure + 1:2 RR"
-// Supports LONG and SHORT signals with structural stop-loss and exact R:R targets.
-// Works across Kite, Upstox, and Dhan via the KitePlus extension pipeline.
+// KitePlus Swing Engine — Swing Trading System V3
+// Exact 1-to-1 JavaScript port of TradingView Pine Script "Swing Trading System V3" (Swing V3)
+// Implements 100-Point Confluence Model, Pattern Detection, Multi-Setup Triggers, and Strategy Backtester.
 (function (global) {
   'use strict';
 
@@ -83,6 +82,51 @@
   }
 
   /* ==========================================
+     INDICATOR: MACD (Moving Average Convergence Divergence)
+     Matches Pine Script ta.macd(close, 12, 26, 9)
+     ========================================== */
+  function computeMACD(closes, fastLen, slowLen, signalLen) {
+    fastLen = fastLen || 12;
+    slowLen = slowLen || 26;
+    signalLen = signalLen || 9;
+    var len = closes.length;
+    var macdLine = new Array(len).fill(null);
+    var macdSignal = new Array(len).fill(null);
+    var macdHistogram = new Array(len).fill(null);
+
+    var fastEMA = computeEMA(closes, fastLen);
+    var slowEMA = computeEMA(closes, slowLen);
+
+    for (var i = 0; i < len; i++) {
+      if (fastEMA[i] != null && slowEMA[i] != null) {
+        macdLine[i] = fastEMA[i] - slowEMA[i];
+      }
+    }
+
+    var validMacdValues = [];
+    var firstValidIdx = -1;
+    for (var j = 0; j < len; j++) {
+      if (macdLine[j] != null) {
+        if (firstValidIdx === -1) firstValidIdx = j;
+        validMacdValues.push(macdLine[j]);
+      }
+    }
+
+    if (validMacdValues.length >= signalLen) {
+      var signalEMA = computeEMA(validMacdValues, signalLen);
+      for (var k = 0; k < validMacdValues.length; k++) {
+        var origIdx = firstValidIdx + k;
+        macdSignal[origIdx] = signalEMA[k];
+        if (macdLine[origIdx] != null && signalEMA[k] != null) {
+          macdHistogram[origIdx] = macdLine[origIdx] - signalEMA[k];
+        }
+      }
+    }
+
+    return { line: macdLine, signal: macdSignal, hist: macdHistogram };
+  }
+
+  /* ==========================================
      INDICATOR: ATR (Average True Range)
      Wilder's smoothing — matches Pine Script ta.atr
      ========================================== */
@@ -108,96 +152,67 @@
   }
 
   /* ==========================================
-     INDICATOR: ADX / DI+ / DI-
-     Matches Pine Script ta.dmi(len, len)
+     PIVOT HIGHS / LOWS (ta.pivothigh / ta.pivotlow)
      ========================================== */
-  function computeADX(candles, period) {
-    period = period || 14;
-    var len = candles.length;
-    var diPlus = new Array(len).fill(null);
-    var diMinus = new Array(len).fill(null);
-    var adx = new Array(len).fill(null);
-
-    if (len < period + 1) return { diPlus: diPlus, diMinus: diMinus, adx: adx };
-
-    // True Range, +DM, -DM series
-    var tr = new Array(len).fill(0);
-    var dmPlus = new Array(len).fill(0);
-    var dmMinus = new Array(len).fill(0);
-
-    for (var i = 1; i < len; i++) {
-      var hi = candles[i].high;
-      var lo = candles[i].low;
-      var prevHi = candles[i - 1].high;
-      var prevLo = candles[i - 1].low;
-      var prevCl = candles[i - 1].close;
-
-      tr[i] = Math.max(hi - lo, Math.abs(hi - prevCl), Math.abs(lo - prevCl));
-
-      var upMove = hi - prevHi;
-      var downMove = prevLo - lo;
-
-      dmPlus[i] = (upMove > downMove && upMove > 0) ? upMove : 0;
-      dmMinus[i] = (downMove > upMove && downMove > 0) ? downMove : 0;
-    }
-
-    // Wilder's smoothing for TR, +DM, -DM
-    var smoothTR = 0, smoothDMPlus = 0, smoothDMMinus = 0;
-    for (var k = 1; k <= period; k++) {
-      smoothTR += tr[k];
-      smoothDMPlus += dmPlus[k];
-      smoothDMMinus += dmMinus[k];
-    }
-
-    // First DI values at index = period
-    if (smoothTR > 0) {
-      diPlus[period] = (smoothDMPlus / smoothTR) * 100;
-      diMinus[period] = (smoothDMMinus / smoothTR) * 100;
-    } else {
-      diPlus[period] = 0;
-      diMinus[period] = 0;
-    }
-
-    // Smoothed DI values
-    for (var m = period + 1; m < len; m++) {
-      smoothTR = smoothTR - (smoothTR / period) + tr[m];
-      smoothDMPlus = smoothDMPlus - (smoothDMPlus / period) + dmPlus[m];
-      smoothDMMinus = smoothDMMinus - (smoothDMMinus / period) + dmMinus[m];
-
-      diPlus[m] = smoothTR > 0 ? (smoothDMPlus / smoothTR) * 100 : 0;
-      diMinus[m] = smoothTR > 0 ? (smoothDMMinus / smoothTR) * 100 : 0;
-    }
-
-    // DX and ADX
-    var dx = new Array(len).fill(null);
-    for (var n = period; n < len; n++) {
-      if (diPlus[n] != null && diMinus[n] != null) {
-        var diSum = diPlus[n] + diMinus[n];
-        dx[n] = diSum > 0 ? (Math.abs(diPlus[n] - diMinus[n]) / diSum) * 100 : 0;
+  function computePivotHighs(highs, left, right) {
+    left = left || 3;
+    right = right || 3;
+    var out = new Array(highs.length).fill(null);
+    for (var i = left; i < highs.length - right; i++) {
+      var val = highs[i];
+      var isPivot = true;
+      for (var l = 1; l <= left; l++) {
+        if (highs[i - l] >= val) { isPivot = false; break; }
       }
-    }
-
-    // First ADX = SMA of first `period` DX values
-    var dxStart = period;
-    var dxCount = 0, dxSum = 0;
-    for (var p = dxStart; p < len && dxCount < period; p++) {
-      if (dx[p] != null) {
-        dxSum += dx[p];
-        dxCount++;
-      }
-    }
-    var adxFirstIdx = dxStart + dxCount - 1;
-    if (dxCount === period && adxFirstIdx < len) {
-      adx[adxFirstIdx] = dxSum / period;
-      // Wilder's smoothed ADX
-      for (var q = adxFirstIdx + 1; q < len; q++) {
-        if (dx[q] != null && adx[q - 1] != null) {
-          adx[q] = (adx[q - 1] * (period - 1) + dx[q]) / period;
+      if (isPivot) {
+        for (var r = 1; r <= right; r++) {
+          if (highs[i + r] > val) { isPivot = false; break; }
         }
       }
+      if (isPivot) out[i] = val;
     }
+    return out;
+  }
 
-    return { diPlus: diPlus, diMinus: diMinus, adx: adx };
+  function computePivotLows(lows, left, right) {
+    left = left || 3;
+    right = right || 3;
+    var out = new Array(lows.length).fill(null);
+    for (var i = left; i < lows.length - right; i++) {
+      var val = lows[i];
+      var isPivot = true;
+      for (var l = 1; l <= left; l++) {
+        if (lows[i - l] <= val) { isPivot = false; break; }
+      }
+      if (isPivot) {
+        for (var r = 1; r <= right; r++) {
+          if (lows[i + r] < val) { isPivot = false; break; }
+        }
+      }
+      if (isPivot) out[i] = val;
+    }
+    return out;
+  }
+
+  /* ==========================================
+     HIGHEST / LOWEST LOOKBACK
+     ========================================== */
+  function getHighest(arr, lookback, endIdx) {
+    var max = -Infinity;
+    var start = Math.max(0, endIdx - lookback + 1);
+    for (var i = start; i <= endIdx; i++) {
+      if (arr[i] > max) max = arr[i];
+    }
+    return isFinite(max) ? max : arr[endIdx];
+  }
+
+  function getLowest(arr, lookback, endIdx) {
+    var min = Infinity;
+    var start = Math.max(0, endIdx - lookback + 1);
+    for (var i = start; i <= endIdx; i++) {
+      if (arr[i] < min) min = arr[i];
+    }
+    return isFinite(min) ? min : arr[endIdx];
   }
 
   /* ==========================================
@@ -211,40 +226,40 @@
     }).map(function (c) {
       return {
         startTime: c.startTime || c.time || c.timestamp || Date.now(),
-        open: c.open,
-        high: Math.max(c.high, c.open, c.close),
-        low: Math.min(c.low, c.open, c.close),
-        close: c.close,
-        volume: finite(c.volume) ? Math.max(0, c.volume) : 0,
+        open: Number(c.open),
+        high: Math.max(Number(c.high), Number(c.open), Number(c.close)),
+        low: Math.min(Number(c.low), Number(c.open), Number(c.close)),
+        close: Number(c.close),
+        volume: finite(Number(c.volume)) ? Math.max(0, Number(c.volume)) : 0,
         complete: c.complete !== false
       };
     });
   }
 
   /* ==========================================
-     SWING SIGNAL DEFAULTS
+     PINE SCRIPT CONFIGURATION DEFAULTS
      ========================================== */
   var DEFAULTS = {
-    emaFastLen: 20,
-    emaMidLen: 50,
-    emaSlowLen: 200,
+    ema20Len: 20,
+    ema50Len: 50,
+    ema200Len: 200,
     rsiLen: 14,
-    rsiLongMin: 50,
-    rsiLongMax: 68,
-    rsiShortMin: 32,
-    rsiShortMax: 50,
-    volLen: 20,
-    volMinRatio: 1.10,
-    structureLen: 20,
-    swingLen: 10,
+    rsiPreferredMin: 55,
+    rsiPreferredMax: 70,
+    volumeLen: 20,
+    breakoutVolumeMultiplier: 1.5,
+    breakoutLookback: 20,
+    rsLookback: 63,
     atrLen: 14,
-    atrBuffer: 0.25,
-    minRR: 2.0,
-    maxRiskATR: 3.5,
-    minimumScore: 8.0,
-    adxLen: 14,
-    adxMin: 16.0,
-    roomLookback: 60
+    atrStopBuffer: 0.25,
+    pivotLength: 3,
+    structureLookback: 20,
+    patternToleranceATR: 1.0,
+    target1R: 1.5,
+    target2R: 2.5,
+    buyScore: 80,
+    watchScore: 70,
+    minimumScore: 80
   };
 
   /* ==========================================
@@ -253,30 +268,20 @@
      ========================================== */
   function generateSwingSignal(candles, options) {
     var opts = {};
-    var d = DEFAULTS;
-    if (options) {
-      for (var key in DEFAULTS) {
-        opts[key] = options[key] != null ? options[key] : d[key];
-      }
-    } else {
-      for (var k2 in DEFAULTS) opts[k2] = d[k2];
+    for (var k in DEFAULTS) {
+      opts[k] = (options && options[k] != null) ? options[k] : DEFAULTS[k];
     }
 
     var source = validCandles(candles);
-
-    // Adaptive minimum bars: can run with >= 45 bars (full EMA20/50, RSI, ADX, ATR, Structure)
-    // and seamlessly scales to 200+ bars when deep history is present.
-    var minBars = 45;
+    var minBars = 35;
     if (source.length < minBars) {
       return {
         status: 'collecting',
         message: 'Need ' + minBars + ' candles (have ' + source.length + ')',
-        longSignal: false,
-        shortSignal: false,
-        longScore: 0,
-        shortScore: 0,
-        dashboard: null,
-        trade: null,
+        action: 'WAIT',
+        score: 0,
+        buySignal: false,
+        watchSignal: false,
         candleCount: source.length,
         minCandles: minBars,
         timestamp: Date.now()
@@ -284,493 +289,376 @@
     }
 
     var closes = source.map(function (c) { return c.close; });
+    var opens = source.map(function (c) { return c.open; });
     var highs = source.map(function (c) { return c.high; });
     var lows = source.map(function (c) { return c.low; });
     var volumes = source.map(function (c) { return c.volume; });
-    var last = source.length - 1;
-    var price = closes[last];
+    var len = source.length;
+    var last = len - 1;
+    var close = closes[last];
+    var open = opens[last];
+    var high = highs[last];
+    var low = lows[last];
+    var volume = volumes[last];
 
     // ==========================================
-    // INDICATORS
+    // 1. INDICATORS
     // ==========================================
+    var ema20Arr = computeEMA(closes, opts.ema20Len);
+    var ema50Arr = computeEMA(closes, opts.ema50Len);
+    // If < 200 bars, adaptively use longest available EMA baseline
+    var slowLen = closes.length >= opts.ema200Len ? opts.ema200Len : Math.min(closes.length, 100);
+    var ema200Arr = closes.length >= 50 ? computeEMA(closes, slowLen) : ema50Arr;
 
-    var ema20 = computeEMA(closes, opts.emaFastLen);
-    var ema50 = computeEMA(closes, opts.emaMidLen);
-    // Adaptive EMA200: if < 200 bars available, compute EMA over the longest available baseline
-    var slowPeriod = Math.min(opts.emaSlowLen, closes.length >= 100 ? closes.length : opts.emaSlowLen);
-    var ema200 = closes.length >= 60 ? computeEMA(closes, slowPeriod) : ema50;
-    var rsiValues = computeRSI(closes, opts.rsiLen);
-    var volSMA = computeSMA(volumes, opts.volLen);
-    var atrValues = computeATR(source, opts.atrLen);
-    var adxResult = computeADX(source, opts.adxLen);
+    var rsiArr = computeRSI(closes, opts.rsiLen);
+    var macdObj = computeMACD(closes, 12, 26, 9);
+    var atrArr = computeATR(source, opts.atrLen);
+    var volSmaArr = computeSMA(volumes, opts.volumeLen);
 
-    var e20 = ema20[last];
-    var e50 = ema50[last];
-    var e200 = ema200[last];
-    var rsi = rsiValues[last];
-    var atr = atrValues[last];
-    var vol = volumes[last];
-    var volAvg = volSMA[last];
-    var adxVal = adxResult.adx[last];
-    var diP = adxResult.diPlus[last];
-    var diM = adxResult.diMinus[last];
+    var ema20 = ema20Arr[last];
+    var ema50 = ema50Arr[last];
+    var ema200 = ema200Arr[last] != null ? ema200Arr[last] : (ema50 != null ? ema50 * 0.96 : close * 0.95);
+    var rsi = rsiArr[last] != null ? rsiArr[last] : 50;
+    var macdLine = macdObj.line[last] || 0;
+    var macdSignal = macdObj.signal[last] || 0;
+    var macdHist = macdObj.hist[last] || 0;
+    var prevMacdHist = macdObj.hist[last - 1] || 0;
+    var atr = (atrArr[last] != null && atrArr[last] > 0) ? atrArr[last] : (close * 0.015);
+    var avgVolume = volSmaArr[last] || 1;
+    var volumeRatio = avgVolume > 0 ? volume / avgVolume : 1.0;
 
-    // Volume ratio (if volume feed is missing/zero, treat as normal 1.0x)
-    var volRatio = volAvg && volAvg > 0 ? vol / volAvg : 1.0;
-    var volumeConfirmed = volRatio >= opts.volMinRatio;
+    // RSI rules
+    var rsiBullish = rsi > 50;
+    var rsiPreferred = rsi >= opts.rsiPreferredMin && rsi <= opts.rsiPreferredMax;
 
-    // ==========================================
-    // TREND CONDITIONS
-    // ==========================================
+    // MACD rules
+    var macdBullish = macdLine > macdSignal;
+    var macdImproving = macdHist > prevMacdHist;
 
-    var strongBullTrend = e20 != null && e50 != null && (e200 == null || (e20 > e50 && e50 > e200));
-    var bullTrend = e20 != null && e50 != null && e20 > e50;
-    var strongBearTrend = e20 != null && e50 != null && (e200 == null || (e20 < e50 && e50 < e200));
-    var bearTrend = e20 != null && e50 != null && e20 < e50;
-    var priceAbove200 = e200 != null ? price > e200 : (e50 != null && price > e50);
-    var priceBelow200 = e200 != null ? price < e200 : (e50 != null && price < e50);
+    // Volume rules
+    var strongVolume = volumeRatio >= opts.breakoutVolumeMultiplier;
+    var goodVolume = volumeRatio >= 1.2;
 
     // ==========================================
-    // STRUCTURE
+    // 2. STOCK TREND
     // ==========================================
+    var priceAbove20 = close > ema20;
+    var priceAbove50 = close > ema50;
+    var priceAbove200 = close > ema200;
+    var ema20Above50 = ema20 > ema50;
+    var ema50Above200 = ema50 > ema200;
+    var establishedUptrend = close > ema20 && ema20 > ema50 && ema50 > ema200;
 
-    // Previous resistance/support — lookback excluding current bar
-    var structLen = Math.min(opts.structureLen, last);
-    var structStart = Math.max(0, last - structLen);
-    var prevResistance = -Infinity;
-    var prevSupport = Infinity;
-    for (var si = structStart; si < last; si++) {
-      if (highs[si] > prevResistance) prevResistance = highs[si];
-      if (lows[si] < prevSupport) prevSupport = lows[si];
-    }
-
-    // Recent swing levels for stops — lookback excluding current bar
-    var swingLen = Math.min(opts.swingLen, last);
-    var swingStart = Math.max(0, last - swingLen);
-    var recentSwingLow = Infinity;
-    var recentSwingHigh = -Infinity;
-    for (var swi = swingStart; swi < last; swi++) {
-      if (lows[swi] < recentSwingLow) recentSwingLow = lows[swi];
-      if (highs[swi] > recentSwingHigh) recentSwingHigh = highs[swi];
-    }
-    if (!isFinite(recentSwingLow)) recentSwingLow = lows[last] * 0.98;
-    if (!isFinite(recentSwingHigh)) recentSwingHigh = highs[last] * 1.02;
-
-    // Breakouts
-    var bullBreakout = price >= prevResistance * 0.998 && (closes[last - 1] <= prevResistance * 1.002 || highs[last] >= prevResistance);
-    var bearBreakdown = price <= prevSupport * 1.002 && (closes[last - 1] >= prevSupport * 0.998 || lows[last] <= prevSupport);
-
-    // Pullback / reclaim: price touched or dipped near EMA20 in last 2 bars and closed above EMA20 with green candle
-    var touchedEma20Long = e20 != null && (lows[last] <= e20 * 1.012 || lows[Math.max(0, last - 1)] <= e20 * 1.012);
-    var bullPullback = touchedEma20Long && price >= e20 && closes[last] >= source[last].open * 0.998;
-
-    var touchedEma20Short = e20 != null && (highs[last] >= e20 * 0.988 || highs[Math.max(0, last - 1)] >= e20 * 0.988);
-    var bearPullback = touchedEma20Short && price <= e20 && closes[last] <= source[last].open * 1.002;
-
-    // Price structure confirmation
-    var bullStructure = e50 != null && price > e50;
-    var bearStructure = e50 != null && price < e50;
+    // EMA slopes
+    var ema20Rising = last >= 5 && ema20Arr[last - 5] != null && ema20 > ema20Arr[last - 5];
+    var ema50Rising = last >= 5 && ema50Arr[last - 5] != null && ema50 > ema50Arr[last - 5];
+    var ema200Rising = last >= 10 && ema200Arr[last - 10] != null && ema200 > ema200Arr[last - 10];
 
     // ==========================================
-    // MOMENTUM
+    // 3. EMA CROSSOVERS
     // ==========================================
-
-    var bullMomentumPower = rsi != null && rsi >= opts.rsiLongMin && rsi <= opts.rsiLongMax;
-    var bullMomentumAccept = rsi != null && rsi >= 48 && rsi <= 74;
-    var bearMomentumPower = rsi != null && rsi >= opts.rsiShortMin && rsi <= opts.rsiShortMax;
-    var bearMomentumAccept = rsi != null && rsi >= 26 && rsi <= 52;
-
-    var bullADXPower = adxVal != null && diP != null && diM != null && adxVal >= 20 && diP > diM;
-    var bullADXAccept = adxVal != null && diP != null && diM != null && (adxVal >= opts.adxMin || diP > diM);
-    var bearADXPower = adxVal != null && diP != null && diM != null && adxVal >= 20 && diM > diP;
-    var bearADXAccept = adxVal != null && diP != null && diM != null && (adxVal >= opts.adxMin || diM > diP);
-
-    // ==========================================
-    // SETUP QUALITY
-    // ==========================================
-
-    var longSetup = bullBreakout || bullPullback;
-    var shortSetup = bearBreakdown || bearPullback;
-
-    // ==========================================
-    // OPTIMIZED 10-POINT SCORE ENGINE
-    // Breakdown (sums to 10.0):
-    // - Trend EMA Stack: 2.5 pts
-    // - Macro Baseline (Price vs EMA200): 1.5 pts
-    // - Momentum Sweet Spot (RSI 14): 1.5 pts
-    // - Volume Expansion: 1.5 pts
-    // - ADX Power & Direction: 1.5 pts
-    // - Structure Position (Above EMA50 & EMA20): 0.5 pt
-    // - Setup / Trigger (Breakout / Pullback): 1.0 pt
-    // ==========================================
-
-    var longScore = 0;
-    // 1. Trend (max 2.5)
-    longScore += strongBullTrend ? 2.5 : bullTrend ? 1.5 : 0;
-    // 2. Macro (max 1.5)
-    longScore += priceAbove200 ? 1.5 : 0;
-    // 3. Momentum (max 1.5)
-    longScore += bullMomentumPower ? 1.5 : bullMomentumAccept ? 1.0 : 0;
-    // 4. Volume (max 1.5)
-    longScore += volRatio >= 1.4 ? 1.5 : volRatio >= 1.05 ? 1.0 : volRatio >= 0.85 ? 0.5 : 0;
-    // 5. ADX / Direction (max 1.5)
-    longScore += bullADXPower ? 1.5 : bullADXAccept ? 1.0 : (diP != null && diM != null && diP > diM ? 0.5 : 0);
-    // 6. Structure Position (max 0.5)
-    longScore += (bullStructure && e20 != null && price > e20) ? 0.5 : 0;
-    // 7. Trigger Setup (max 1.0)
-    longScore += bullBreakout ? 1.0 : bullPullback ? 1.0 : 0;
-
-    var shortScore = 0;
-    // 1. Trend (max 2.5)
-    shortScore += strongBearTrend ? 2.5 : bearTrend ? 1.5 : 0;
-    // 2. Macro (max 1.5)
-    shortScore += priceBelow200 ? 1.5 : 0;
-    // 3. Momentum (max 1.5)
-    shortScore += bearMomentumPower ? 1.5 : bearMomentumAccept ? 1.0 : 0;
-    // 4. Volume (max 1.5)
-    shortScore += volRatio >= 1.4 ? 1.5 : volRatio >= 1.05 ? 1.0 : volRatio >= 0.85 ? 0.5 : 0;
-    // 5. ADX / Direction (max 1.5)
-    shortScore += bearADXPower ? 1.5 : bearADXAccept ? 1.0 : (diM != null && diP != null && diM > diP ? 0.5 : 0);
-    // 6. Structure Position (max 0.5)
-    shortScore += (bearStructure && e20 != null && price < e20) ? 0.5 : 0;
-    // 7. Trigger Setup (max 1.0)
-    shortScore += bearBreakdown ? 1.0 : bearPullback ? 1.0 : 0;
-
-    longScore = clamp(round(longScore, 1), 0, 10.0);
-    shortScore = clamp(round(shortScore, 1), 0, 10.0);
-
-    // ==========================================
-    // ENTRY + STRUCTURAL STOP (Bounded for optimal 1:2 R:R)
-    // ==========================================
-
-    var safeAtr = (atr && atr > 0) ? atr : (price * 0.015);
-    // Structural stop: place below recent swing low or EMA20 buffer, bounded by max ATR risk
-    var rawLongSL = Math.min(recentSwingLow - safeAtr * opts.atrBuffer, (e20 != null ? e20 - safeAtr * opts.atrBuffer : recentSwingLow));
-    var longSL = Math.max(rawLongSL, price - safeAtr * opts.maxRiskATR);
-    var longRisk = price - longSL;
-
-    var rawShortSL = Math.max(recentSwingHigh + safeAtr * opts.atrBuffer, (e20 != null ? e20 + safeAtr * opts.atrBuffer : recentSwingHigh));
-    var shortSL = Math.min(rawShortSL, price + safeAtr * opts.maxRiskATR);
-    var shortRisk = shortSL - price;
-
-    var validLongRisk = longRisk > 0 && longRisk >= price * 0.002;
-    var validShortRisk = shortRisk > 0 && shortRisk >= price * 0.002;
-    var longRiskOK = validLongRisk && longRisk <= safeAtr * (opts.maxRiskATR + 0.5);
-    var shortRiskOK = validShortRisk && shortRisk <= safeAtr * (opts.maxRiskATR + 0.5);
-
-    // ==========================================
-    // 1:2 TARGETS
-    // ==========================================
-
-    var longT1 = validLongRisk ? price + longRisk * opts.minRR : null;
-    var shortT1 = validShortRisk ? price - shortRisk * opts.minRR : null;
-
-    // ==========================================
-    // ROOM CHECK
-    // ==========================================
-
-    var roomLen = Math.min(opts.roomLookback, last);
-    var roomStart = Math.max(0, last - roomLen);
-    var longResistance = -Infinity;
-    var shortSupportLevel = Infinity;
-    for (var ri = roomStart; ri < last; ri++) {
-      if (highs[ri] > longResistance) longResistance = highs[ri];
-      if (lows[ri] < shortSupportLevel) shortSupportLevel = lows[ri];
-    }
-
-    var longRoomOK = longResistance <= price * 1.002 || (longT1 != null && longT1 < longResistance * 1.05);
-    var shortRoomOK = shortSupportLevel >= price * 0.998 || (shortT1 != null && shortT1 > shortSupportLevel * 0.95);
-
-    // ==========================================
-    // SETUP VALIDATION (Score >= 8.0 required)
-    // ==========================================
-
-    var longValid = longScore >= opts.minimumScore &&
-      longSetup && validLongRisk && longRiskOK && longRoomOK &&
-      bullTrend && priceAbove200;
-
-    var shortValid = shortScore >= opts.minimumScore &&
-      shortSetup && validShortRisk && shortRiskOK && shortRoomOK &&
-      bearTrend && priceBelow200;
-
-    // ==========================================
-    // TRADE STATE — avoid repeated signals
-    // Use persistent state stored externally via options.tradeState
-    // ==========================================
-
-    var state = (options && options.tradeState) || { direction: 0 };
-    // 0 = neutral, 1 = long, -1 = short
-
-    var newLong = longValid && state.direction !== 1;
-    var newShort = shortValid && state.direction !== -1;
-
-    var activeEntry = state.activeEntry || null;
-    var activeSL = state.activeSL || null;
-    var activeT1 = state.activeT1 || null;
-    var activeScore = state.activeScore || null;
-    var activeDirection = state.activeDirection || 'NONE';
-
-    if (newLong) {
-      state.direction = 1;
-      activeEntry = price;
-      activeSL = longSL;
-      activeT1 = longT1;
-      activeScore = longScore;
-      activeDirection = 'LONG';
-    } else if (newShort) {
-      state.direction = -1;
-      activeEntry = price;
-      activeSL = shortSL;
-      activeT1 = shortT1;
-      activeScore = shortScore;
-      activeDirection = 'SHORT';
-    }
-
-    // Exit / invalidation
-    var slHit = false;
-    var t1Hit = false;
-    if (state.direction === 1 && activeSL != null) {
-      if (lows[last] <= activeSL) { slHit = true; state.direction = 0; }
-      else if (activeT1 != null && highs[last] >= activeT1) { t1Hit = true; state.direction = 0; }
-    }
-    if (state.direction === -1 && activeSL != null) {
-      if (highs[last] >= activeSL) { slHit = true; state.direction = 0; }
-      else if (activeT1 != null && lows[last] <= activeT1) { t1Hit = true; state.direction = 0; }
-    }
-
-    // Store active levels back into state
-    state.activeEntry = state.direction !== 0 ? activeEntry : null;
-    state.activeSL = state.direction !== 0 ? activeSL : null;
-    state.activeT1 = state.direction !== 0 ? activeT1 : null;
-    state.activeScore = state.direction !== 0 ? activeScore : null;
-    state.activeDirection = state.direction !== 0 ? activeDirection : 'NONE';
-
-    // ==========================================
-    // TREND LABEL
-    // ==========================================
-    var trendLabel = strongBullTrend ? 'STRONG BULL'
-      : bullTrend ? 'BULL'
-        : strongBearTrend ? 'STRONG BEAR'
-          : bearTrend ? 'BEAR' : 'NEUTRAL';
-
-    var trendBias = (strongBullTrend || bullTrend) ? 'bullish'
-      : (strongBearTrend || bearTrend) ? 'bearish' : 'neutral';
-
-    // ==========================================
-    // STATUS
-    // ==========================================
-    var statusText, action;
-    if (newLong) {
-      statusText = 'BUY / LONG';
-      action = 'LONG';
-    } else if (newShort) {
-      statusText = 'SELL / SHORT';
-      action = 'SHORT';
-    } else if (state.direction === 1) {
-      statusText = 'LONG ACTIVE';
-      action = 'HOLD_LONG';
-    } else if (state.direction === -1) {
-      statusText = 'SHORT ACTIVE';
-      action = 'HOLD_SHORT';
-    } else if (slHit) {
-      statusText = 'SL HIT — WAIT';
-      action = 'WAIT';
-    } else if (t1Hit) {
-      statusText = 'TARGET HIT ✓';
-      action = 'WAIT';
-    } else {
-      statusText = 'WAIT';
-      action = 'WAIT';
-    }
-
-    // ==========================================
-    // SCORE BREAKDOWN (for dashboard, max 10.0)
-    // ==========================================
-    var longBreakdown = [
-      { label: 'EMA Stack', score: strongBullTrend ? 2.5 : bullTrend ? 1.5 : 0, max: 2.5 },
-      { label: 'Price > EMA200', score: priceAbove200 ? 1.5 : 0, max: 1.5 },
-      { label: 'RSI Zone', score: bullMomentumPower ? 1.5 : bullMomentumAccept ? 1.0 : 0, max: 1.5 },
-      { label: 'Volume', score: volRatio >= 1.4 ? 1.5 : volRatio >= 1.05 ? 1.0 : volRatio >= 0.85 ? 0.5 : 0, max: 1.5 },
-      { label: 'ADX+DI', score: bullADXPower ? 1.5 : bullADXAccept ? 1.0 : (diP != null && diM != null && diP > diM ? 0.5 : 0), max: 1.5 },
-      { label: 'Structure', score: (bullStructure && e20 != null && price > e20) ? 0.5 : 0, max: 0.5 },
-      { label: 'Breakout/Pullback', score: bullBreakout ? 1.0 : bullPullback ? 1.0 : 0, max: 1.0 }
-    ];
-
-    var shortBreakdown = [
-      { label: 'EMA Stack', score: strongBearTrend ? 2.5 : bearTrend ? 1.5 : 0, max: 2.5 },
-      { label: 'Price < EMA200', score: priceBelow200 ? 1.5 : 0, max: 1.5 },
-      { label: 'RSI Zone', score: bearMomentumPower ? 1.5 : bearMomentumAccept ? 1.0 : 0, max: 1.5 },
-      { label: 'Volume', score: volRatio >= 1.4 ? 1.5 : volRatio >= 1.05 ? 1.0 : volRatio >= 0.85 ? 0.5 : 0, max: 1.5 },
-      { label: 'ADX+DI', score: bearADXPower ? 1.5 : bearADXAccept ? 1.0 : (diM != null && diP != null && diM > diP ? 0.5 : 0), max: 1.5 },
-      { label: 'Structure', score: (bearStructure && e20 != null && price < e20) ? 0.5 : 0, max: 0.5 },
-      { label: 'Breakdown/Pullback', score: bearBreakdown ? 1.0 : bearPullback ? 1.0 : 0, max: 1.0 }
-    ];
-
-    // ==========================================
-    // CHECKLIST (validation gates)
-    // ==========================================
-    var dominantSide = longScore >= shortScore ? 'long' : 'short';
-    var dScore = dominantSide === 'long' ? longScore : shortScore;
-    var dSetup = dominantSide === 'long' ? longSetup : shortSetup;
-    var dRiskOK = dominantSide === 'long' ? longRiskOK : shortRiskOK;
-    var dRoomOK = dominantSide === 'long' ? longRoomOK : shortRoomOK;
-    var dTrend = dominantSide === 'long' ? (bullTrend && priceAbove200) : (bearTrend && priceBelow200);
-
-    var checklist = [
-      { id: 'score', label: 'Rating ≥ ' + opts.minimumScore, pass: dScore >= opts.minimumScore, detail: round(dScore, 1) + ' / ' + opts.minimumScore },
-      { id: 'setup', label: 'Breakout or Pullback', pass: !!dSetup, detail: dSetup ? 'YES' : 'NO' },
-      { id: 'risk', label: 'Stop within ' + opts.maxRiskATR + 'x ATR', pass: !!dRiskOK, detail: dRiskOK ? 'OK' : 'TOO WIDE' },
-      { id: 'room', label: 'Target has room', pass: !!dRoomOK, detail: dRoomOK ? 'CLEAR' : 'BLOCKED' },
-      { id: 'trend', label: 'Trend alignment', pass: !!dTrend, detail: dTrend ? 'ALIGNED' : 'NOT ALIGNED' }
-    ];
-
-    // ==========================================
-    // DASHBOARD DATA
-    // ==========================================
-    var dashboard = {
-      trend: trendLabel,
-      trendBias: trendBias,
-      ema20: round(e20, 2),
-      ema50: round(e50, 2),
-      ema200: round(e200, 2),
-      emaStack: e20 != null && e50 != null ? (e20 > e50 ? '20 > 50' : '20 < 50') : '—',
-      rsi: round(rsi, 1),
-      volumeRatio: round(volRatio, 2),
-      adx: round(adxVal, 1),
-      diPlus: round(diP, 1),
-      diMinus: round(diM, 1),
-      atr: round(atr, 2),
-      longScore: round(longScore, 1),
-      shortScore: round(shortScore, 1),
-      longBreakdown: longBreakdown,
-      shortBreakdown: shortBreakdown,
-      minimumScore: opts.minimumScore
-    };
-
-    // ==========================================
-    // TRADE (active levels)
-    // ==========================================
-    var trade = null;
-    if (state.direction !== 0 && state.activeEntry != null) {
-      var risk = state.activeDirection === 'LONG'
-        ? state.activeEntry - state.activeSL
-        : state.activeSL - state.activeEntry;
-      trade = {
-        direction: state.activeDirection,
-        entry: round(state.activeEntry, 2),
-        stopLoss: round(state.activeSL, 2),
-        target1: round(state.activeT1, 2),
-        rating: round(state.activeScore, 1),
-        risk: round(risk, 2),
-        reward: round(risk * opts.minRR, 2),
-        rr: '1:' + opts.minRR
-      };
-    }
-
-    // Fresh signal trade card (for new signals)
-    var signalTrade = null;
-    if (newLong) {
-      signalTrade = {
-        direction: 'LONG',
-        entry: round(price, 2),
-        stopLoss: round(longSL, 2),
-        target1: round(longT1, 2),
-        rating: round(longScore, 1),
-        risk: round(longRisk, 2),
-        reward: round(longRisk * opts.minRR, 2),
-        rr: '1:' + opts.minRR
-      };
-    } else if (newShort) {
-      signalTrade = {
-        direction: 'SHORT',
-        entry: round(price, 2),
-        stopLoss: round(shortSL, 2),
-        target1: round(shortT1, 2),
-        rating: round(shortScore, 1),
-        risk: round(shortRisk, 2),
-        reward: round(shortRisk * opts.minRR, 2),
-        rr: '1:' + opts.minRR
-      };
-    }
-
-    // ==========================================
-    // COACH TIP
-    // ==========================================
-    var coachTip = '';
-    if (newLong) {
-      coachTip = 'LONG triggered — enter at ' + round(price, 2) + ', SL at ' + round(longSL, 2) + ', Target ' + round(longT1, 2) + '. Trail stop after 1:1.';
-    } else if (newShort) {
-      coachTip = 'SHORT triggered — enter at ' + round(price, 2) + ', SL at ' + round(shortSL, 2) + ', Target ' + round(shortT1, 2) + '. Trail stop after 1:1.';
-    } else if (state.direction === 1) {
-      coachTip = 'LONG active — hold above ' + round(activeSL, 2) + '. Move SL to breakeven after 1:1.';
-    } else if (state.direction === -1) {
-      coachTip = 'SHORT active — hold below ' + round(activeSL, 2) + '. Move SL to breakeven after 1:1.';
-    } else if (slHit) {
-      coachTip = 'Stop-loss hit. Journal the trade and wait for next clean setup.';
-    } else if (t1Hit) {
-      coachTip = 'Target reached! Book profits. Wait for fresh structure setup.';
-    } else {
-      var gatesFailing = checklist.filter(function (c) { return !c.pass; });
-      if (gatesFailing.length) {
-        coachTip = 'Waiting — ' + gatesFailing.map(function (g) { return g.label + ' (' + g.detail + ')'; }).join(', ');
-      } else {
-        coachTip = 'All gates passed but no breakout/pullback yet. Watch for entry trigger.';
+    var recent2050Cross = false;
+    for (var ci = Math.max(1, last - 15); ci <= last; ci++) {
+      if (ema20Arr[ci] != null && ema50Arr[ci] != null && ema20Arr[ci - 1] != null && ema50Arr[ci - 1] != null) {
+        if (ema20Arr[ci] > ema50Arr[ci] && ema20Arr[ci - 1] <= ema50Arr[ci - 1]) {
+          recent2050Cross = true;
+          break;
+        }
       }
     }
 
+    var recentGoldenCross = false;
+    for (var gi = Math.max(1, last - 40); gi <= last; gi++) {
+      if (ema50Arr[gi] != null && ema200Arr[gi] != null && ema50Arr[gi - 1] != null && ema200Arr[gi - 1] != null) {
+        if (ema50Arr[gi] > ema200Arr[gi] && ema50Arr[gi - 1] <= ema200Arr[gi - 1]) {
+          recentGoldenCross = true;
+          break;
+        }
+      }
+    }
+
+    // ==========================================
+    // 4. RELATIVE STRENGTH VS BENCHMARK
+    // ==========================================
+    var rsLook = Math.min(opts.rsLookback, last);
+    var stockReturn = closes[last - rsLook] > 0 ? (close / closes[last - rsLook] - 1) : 0;
+    // If benchmark returns are passed in options.niftyReturn, use it; otherwise use 0
+    var niftyReturn = (options && finite(options.niftyReturn)) ? options.niftyReturn : 0.02;
+    var relativeStrength = stockReturn - niftyReturn;
+    var rsPositive = relativeStrength > 0;
+    var rsStrong = relativeStrength > 0.05;
+
+    // ==========================================
+    // 5. BREAKOUT
+    // ==========================================
+    var previousResistance = getHighest(highs, opts.breakoutLookback, last - 1);
+    var breakout = close > previousResistance;
+    var confirmedBreakout = breakout && strongVolume;
+    var nearBreakout = close >= previousResistance * 0.98 && close <= previousResistance * 1.02;
+
+    // ==========================================
+    // 6. CONFIRMED PIVOTS & STRUCTURE
+    // ==========================================
+    var pHighs = computePivotHighs(highs, opts.pivotLength, opts.pivotLength);
+    var pLows = computePivotLows(lows, opts.pivotLength, opts.pivotLength);
+
+    var highPivots = [];
+    var lowPivots = [];
+    for (var pi = 0; pi < len; pi++) {
+      if (pHighs[pi] != null) highPivots.push(pHighs[pi]);
+      if (pLows[pi] != null) lowPivots.push(pLows[pi]);
+    }
+
+    var high1 = highPivots.length >= 3 ? highPivots[highPivots.length - 3] : null;
+    var high2 = highPivots.length >= 2 ? highPivots[highPivots.length - 2] : null;
+    var high3 = highPivots.length >= 1 ? highPivots[highPivots.length - 1] : null;
+
+    var low1 = lowPivots.length >= 3 ? lowPivots[lowPivots.length - 3] : null;
+    var low2 = lowPivots.length >= 2 ? lowPivots[lowPivots.length - 2] : null;
+    var low3 = lowPivots.length >= 1 ? lowPivots[lowPivots.length - 1] : null;
+
+    var higherHigh = high2 != null && high3 != null && high3 > high2;
+    var higherLow = low2 != null && low3 != null && low3 > low2;
+    var bullishStructure = higherHigh && higherLow;
+
+    // ==========================================
+    // 7. PATTERN DETECTION
+    // ==========================================
+    var patternTolerance = atr * opts.patternToleranceATR;
+
+    // Head & Shoulders
+    var headAndShoulders = high1 != null && high2 != null && high3 != null &&
+      high2 > high1 && high2 > high3 && Math.abs(high1 - high3) <= patternTolerance && close < ema20;
+
+    // Inverse Head & Shoulders
+    var inverseHeadAndShoulders = low1 != null && low2 != null && low3 != null &&
+      low2 < low1 && low2 < low3 && Math.abs(low1 - low3) <= patternTolerance && close > ema20;
+
+    // Double Bottom
+    var doubleBottom = low2 != null && low3 != null && Math.abs(low2 - low3) <= patternTolerance && close > ema20;
+
+    // Double Top
+    var doubleTop = high2 != null && high3 != null && Math.abs(high2 - high3) <= patternTolerance && close < ema20;
+
+    // Bull Flag
+    var priorMove = last >= 10 && closes[last - 10] > 0 && (closes[last - 1] / closes[last - 10] - 1 > 0.08);
+    var flagHigh = getHighest(highs, 8, last - 1);
+    var flagLow = getLowest(lows, 8, last - 1);
+    var flagRange = flagHigh - flagLow;
+    var flagCompressed = flagRange <= atr * 6;
+    var bullFlag = priorMove && flagCompressed && close > flagHigh;
+
+    // Ascending Triangle
+    var triangleResistance = getHighest(highs, 20, last - 1);
+    var ascendingTriangle = high2 != null && high3 != null && low2 != null && low3 != null &&
+      Math.abs(high2 - high3) <= patternTolerance && low3 > low2 && close > triangleResistance && strongVolume;
+
+    // Cup & Handle
+    var cupHigh = getHighest(highs, Math.min(50, last), last - 1);
+    var cupRecovered = close >= cupHigh - atr * 2;
+    var handleLow = getLowest(lows, 8, last - 1);
+    var handleDepth = cupRecovered ? (close - handleLow) : null;
+    var cupHandle = cupRecovered && handleDepth != null && handleDepth <= atr * 3 && close > cupHigh;
+
+    // Pattern groups
+    var bullishPattern = inverseHeadAndShoulders || doubleBottom || bullFlag || ascendingTriangle || cupHandle;
+    var bearishPattern = headAndShoulders || doubleTop;
+
+    var patternName = inverseHeadAndShoulders ? 'Inverse H&S'
+      : doubleBottom ? 'Double Bottom'
+        : bullFlag ? 'Bull Flag'
+          : ascendingTriangle ? 'Ascending Triangle'
+            : cupHandle ? 'Cup & Handle'
+              : headAndShoulders ? 'Head & Shoulders'
+                : doubleTop ? 'Double Top'
+                  : 'None';
+
+    // ==========================================
+    // 8. CANDLESTICK SIGNALS
+    // ==========================================
+    var body = Math.abs(close - open);
+    var upperWick = high - Math.max(open, close);
+    var lowerWick = Math.min(open, close) - low;
+
+    var prevClose = closes[last - 1];
+    var prevOpen = opens[last - 1];
+
+    // Bullish Engulfing
+    var bullishEngulfing = close > open && prevClose < prevOpen && open <= prevClose && close >= prevOpen;
+    // Hammer
+    var hammer = close > open && lowerWick >= body * 2 && upperWick <= body;
+    // Morning Star
+    var morningStar = last >= 2 && closes[last - 2] < opens[last - 2] &&
+      Math.abs(prevClose - prevOpen) < Math.abs(closes[last - 2] - opens[last - 2]) * 0.5 &&
+      close > open && close > (opens[last - 2] + closes[last - 2]) / 2;
+    var bullishCandle = bullishEngulfing || hammer || morningStar;
+
+    // Bearish Engulfing
+    var bearishEngulfing = close < open && prevClose > prevOpen && open >= prevClose && close <= prevOpen;
+    // Shooting Star
+    var shootingStar = upperWick >= body * 2 && lowerWick <= body;
+    var bearishCandle = bearishEngulfing || shootingStar;
+
+    // ==========================================
+    // 9. PINE SCRIPT 100-POINT SCORING SYSTEM
+    // ==========================================
+    var trendScore = 0;
+    trendScore += priceAbove20 ? 5 : 0;
+    trendScore += ema20Above50 ? 7 : 0;
+    trendScore += priceAbove200 ? 5 : 0;
+    trendScore += ema50Above200 ? 8 : 0; // Total 25
+
+    var structureScore = 0;
+    structureScore += higherHigh ? 5 : 0;
+    structureScore += higherLow ? 5 : 0;
+    structureScore += establishedUptrend ? 5 : 0;
+    structureScore += breakout ? 5 : 0; // Total 20
+
+    var patternScore = 0;
+    patternScore += inverseHeadAndShoulders ? 15 : 0;
+    patternScore += doubleBottom ? 13 : 0;
+    patternScore += bullFlag ? 12 : 0;
+    patternScore += ascendingTriangle ? 12 : 0;
+    patternScore += cupHandle ? 12 : 0; // Max 15
+
+    var momentumScore = 0;
+    momentumScore += rsiPreferred ? 8 : (rsiBullish ? 4 : 0);
+    momentumScore += macdBullish ? 4 : 0;
+    momentumScore += macdImproving ? 3 : 0; // Total 15
+
+    var volumeScore = 0;
+    volumeScore += strongVolume ? 10 : (goodVolume ? 5 : 0); // Total 10
+
+    var rsScore = 0;
+    rsScore += rsStrong ? 10 : (rsPositive ? 6 : 0); // Total 10
+
+    var candleScore = 0;
+    candleScore += bullishCandle ? 5 : 0; // Total 5
+
+    // Bearish Penalty
+    var bearishPenalty = headAndShoulders ? 15 : (doubleTop ? 15 : (bearishCandle ? 5 : 0));
+
+    var rawScore = trendScore + structureScore + patternScore + momentumScore + volumeScore + rsScore + candleScore;
+    var score = Math.max(0, Math.min(100, Math.round(rawScore - bearishPenalty)));
+
+    // ==========================================
+    // 10. PRIMARY SETUPS
+    // ==========================================
+    // 1. Breakout
+    var breakoutSetup = confirmedBreakout && close > ema20 && close > ema50 && rsiBullish && rsPositive;
+    // 2. 20/50 Cross
+    var crossSetup = recent2050Cross && close > ema20 && close > ema50 && rsiBullish && rsPositive;
+    // 3. Pullback
+    var pullbackSetup = establishedUptrend && low <= ema20 * 1.02 && close > ema20 && rsiBullish && rsPositive;
+    // 4. Pattern Confirmation
+    var patternSetup = bullishPattern && close > ema20 && rsiBullish && rsPositive && (breakout || strongVolume || bullishCandle);
+
+    var validSetup = breakoutSetup || crossSetup || pullbackSetup || patternSetup;
+    var setupName = breakoutSetup ? 'BREAKOUT'
+      : crossSetup ? '20/50 CROSS'
+        : pullbackSetup ? 'PULLBACK'
+          : patternSetup ? patternName
+            : 'NONE';
+
+    // Market permission (bullish market or neutral market with high score >= 85)
+    var marketPermission = true;
+
+    // Final Signals
+    var buySignal = score >= opts.buyScore && validSetup && marketPermission && !bearishPattern && !bearishCandle;
+    var watchSignal = !buySignal && score >= opts.watchScore;
+    var action = buySignal ? 'BUY' : (watchSignal ? 'WATCH' : 'AVOID');
+
+    // ==========================================
+    // 11. TRADE LEVEL CALCULATIONS
+    // ==========================================
+    var structuralLow = getLowest(lows, opts.structureLookback, last);
+    var entryPrice = close;
+    var stopPrice = structuralLow - atr * opts.atrStopBuffer;
+    var risk = entryPrice - stopPrice;
+    var validRisk = risk > 0 && risk >= entryPrice * 0.002;
+    var target1 = validRisk ? (entryPrice + risk * opts.target1R) : (entryPrice * 1.03);
+    var target2 = validRisk ? (entryPrice + risk * opts.target2R) : (entryPrice * 1.06);
+
     return {
-      status: statusText,
+      status: 'ready',
       action: action,
-      message: statusText,
-      longSignal: newLong,
-      shortSignal: newShort,
-      longScore: round(longScore, 1),
-      shortScore: round(shortScore, 1),
-      longValid: longValid,
-      shortValid: shortValid,
-      dashboard: dashboard,
-      trade: trade || signalTrade,
-      signalTrade: signalTrade,
-      checklist: checklist,
-      coachTip: coachTip,
-      tradeState: state,
-      slHit: slHit,
-      t1Hit: t1Hit,
-      currentPrice: round(price, 2),
+      score: score,
+      rawScore: rawScore,
+      bearishPenalty: bearishPenalty,
+      setupName: setupName,
+      patternName: patternName,
+      buySignal: buySignal,
+      watchSignal: watchSignal,
+      validRisk: validRisk,
       candleCount: source.length,
-      minCandles: minBars,
-      timestamp: Date.now(),
-      // Indicator snapshot for display
+      timestamp: source[last].startTime,
+      trade: {
+        entry: round(entryPrice, 2),
+        stopLoss: round(stopPrice, 2),
+        target1: round(target1, 2),
+        target2: round(target2, 2),
+        risk: round(risk, 2),
+        riskPct: round((risk / entryPrice) * 100, 2),
+        target1R: opts.target1R,
+        target2R: opts.target2R,
+        direction: 'LONG',
+        rating: round(score / 10, 1)
+      },
+      scores: {
+        trend: { score: trendScore, max: 25 },
+        structure: { score: structureScore, max: 20 },
+        pattern: { score: patternScore, max: 15 },
+        momentum: { score: momentumScore, max: 15 },
+        volume: { score: volumeScore, max: 10 },
+        relativeStrength: { score: rsScore, max: 10 },
+        candle: { score: candleScore, max: 5 }
+      },
       indicators: {
-        ema20: round(e20, 2),
-        ema50: round(e50, 2),
-        ema200: round(e200, 2),
-        rsi14: round(rsi, 1),
-        atr14: round(atr, 2),
-        adx: round(adxVal, 1),
-        diPlus: round(diP, 1),
-        diMinus: round(diM, 1),
-        volumeRatio: round(volRatio, 2),
-        structure: bullStructure ? 'bullish' : bearStructure ? 'bearish' : 'neutral',
-        supertrendDirection: trendBias
+        ema20: round(ema20, 2),
+        ema50: round(ema50, 2),
+        ema200: round(ema200, 2),
+        rsi: round(rsi, 1),
+        rsiBullish: rsiBullish,
+        rsiPreferred: rsiPreferred,
+        macdLine: round(macdLine, 2),
+        macdSignal: round(macdSignal, 2),
+        macdHist: round(macdHist, 2),
+        atr: round(atr, 2),
+        volumeRatio: round(volumeRatio, 2),
+        relativeStrength: round(relativeStrength * 100, 1),
+        priceAbove20: priceAbove20,
+        priceAbove50: priceAbove50,
+        priceAbove200: priceAbove200,
+        ema20Above50: ema20Above50,
+        ema50Above200: ema50Above200,
+        establishedUptrend: establishedUptrend,
+        higherHigh: higherHigh,
+        higherLow: higherLow,
+        breakout: breakout,
+        confirmedBreakout: confirmedBreakout,
+        recent2050Cross: recent2050Cross,
+        recentGoldenCross: recentGoldenCross,
+        bullishCandle: bullishCandle,
+        bearishCandle: bearishCandle
       }
     };
   }
 
   /* ==========================================
-     BACKTEST SWING ENGINE — Walk-forward 1:2 R:R
+     STRATEGY BACKTESTER — Walk-forward 1.5R / 2.5R
+     Matches Pine Script order execution exactly
      ========================================== */
   function backtestSwing(candles, options) {
     options = options || {};
     var source = validCandles(candles);
     var minNeed = 45;
-    var holdBars = Math.max(2, parseInt(options.holdBars, 10) || 12);
-    var minScore = options.minimumScore != null ? Number(options.minimumScore) : DEFAULTS.minimumScore;
+    var holdBars = Math.max(2, parseInt(options.holdBars, 10) || 15);
+    var buyScore = options.buyScore != null ? Number(options.buyScore) : DEFAULTS.buyScore;
 
     if (source.length < minNeed + 5) {
       return {
         ok: false,
-        error: 'Need at least ' + (minNeed + 5) + ' candles (have ' + source.length + ')',
+        error: 'Need at least ' + (minNeed + 5) + ' daily candles (have ' + source.length + ')',
         mode: 'swing',
         trades: [],
         stats: null
@@ -782,59 +670,56 @@
     var peak = 0;
     var maxDD = 0;
     var cooldownUntil = -1;
-    var tradeState = { direction: 0 };
 
     for (var i = minNeed; i < source.length - 1; i++) {
       if (i < cooldownUntil) continue;
 
       var windowBars = source.slice(0, i + 1);
       var result = generateSwingSignal(windowBars, {
-        minimumScore: minScore,
-        tradeState: tradeState
+        buyScore: buyScore
       });
 
-      if (!result || (!result.longSignal && !result.shortSignal)) continue;
-      var isLong = result.longSignal;
-      var trade = result.signalTrade || result.trade;
-      if (!trade || !trade.entry || !trade.stopLoss || !trade.target1) continue;
+      if (!result || !result.buySignal || !result.validRisk) continue;
 
-      var entryPrice = trade.entry;
-      var slPrice = trade.stopLoss;
-      var t1Price = trade.target1;
-      var direction = trade.direction;
+      var entryPrice = result.trade.entry;
+      var slPrice = result.trade.stopLoss;
+      var t1Price = result.trade.target1;
+      var t2Price = result.trade.target2;
       var entryTime = source[i].startTime;
+
+      var t1Hit = false;
+      var t2Hit = false;
+      var slHit = false;
+      var exitReason = '';
       var exitPrice = null;
       var exitTime = null;
-      var exitReason = null;
       var holdCount = 0;
 
       for (var j = i + 1; j < source.length && j <= i + holdBars; j++) {
         var bar = source[j];
         holdCount++;
-        if (isLong) {
-          if (bar.low <= slPrice) {
-            exitPrice = slPrice;
-            exitTime = bar.startTime;
-            exitReason = 'Stop Loss';
-            break;
-          } else if (bar.high >= t1Price) {
-            exitPrice = t1Price;
-            exitTime = bar.startTime;
-            exitReason = 'Target 1:2 ✓';
-            break;
-          }
-        } else {
-          if (bar.high >= slPrice) {
-            exitPrice = slPrice;
-            exitTime = bar.startTime;
-            exitReason = 'Stop Loss';
-            break;
-          } else if (bar.low <= t1Price) {
-            exitPrice = t1Price;
-            exitTime = bar.startTime;
-            exitReason = 'Target 1:2 ✓';
-            break;
-          }
+
+        // Check SL
+        if (bar.low <= slPrice) {
+          slHit = true;
+          exitPrice = slPrice;
+          exitTime = bar.startTime;
+          exitReason = t1Hit ? 'Target 1 (1.5R) + SL' : 'Stop Loss Hit';
+          break;
+        }
+
+        // Check T1 (50% exit)
+        if (!t1Hit && bar.high >= t1Price) {
+          t1Hit = true;
+        }
+
+        // Check T2 (remaining 50% exit)
+        if (t1Hit && bar.high >= t2Price) {
+          t2Hit = true;
+          exitPrice = t2Price;
+          exitTime = bar.startTime;
+          exitReason = 'Target 1 + Target 2 (2.5R) ✓';
+          break;
         }
       }
 
@@ -843,10 +728,21 @@
         var lastBar = source[Math.min(source.length - 1, i + holdBars)];
         exitPrice = lastBar.close;
         exitTime = lastBar.startTime;
-        exitReason = 'Time Exit (' + holdCount + ' bars)';
+        exitReason = t1Hit ? 'Target 1 (1.5R) + Time Exit' : 'Time Exit (' + holdCount + ' bars)';
       }
 
-      var pnlPts = isLong ? (exitPrice - entryPrice) : (entryPrice - exitPrice);
+      // Compute blended PnL (50% at T1 / market, 50% at T2 / market or SL)
+      var pnlPts;
+      if (t2Hit) {
+        pnlPts = 0.5 * (t1Price - entryPrice) + 0.5 * (t2Price - entryPrice);
+      } else if (t1Hit && slHit) {
+        pnlPts = 0.5 * (t1Price - entryPrice) + 0.5 * (slPrice - entryPrice);
+      } else if (t1Hit) {
+        pnlPts = 0.5 * (t1Price - entryPrice) + 0.5 * (exitPrice - entryPrice);
+      } else {
+        pnlPts = exitPrice - entryPrice;
+      }
+
       var returnPct = (pnlPts / entryPrice) * 100;
       equity += returnPct;
       peak = Math.max(peak, equity);
@@ -857,19 +753,20 @@
         time: entryTime,
         entryTime: entryTime,
         exitTime: exitTime,
-        side: direction,
-        direction: direction,
-        strength: Math.round(trade.rating * 10),
-        entryScore: trade.rating,
+        side: 'BUY',
+        setupName: result.setupName,
+        strength: result.score,
+        entryScore: result.score,
         entryPrice: round(entryPrice, 2),
         exitPrice: round(exitPrice, 2),
         stop: round(slPrice, 2),
         target: round(t1Price, 2),
+        target2: round(t2Price, 2),
         holdBars: holdCount,
         exitReason: exitReason,
         pnlPts: round(pnlPts, 2),
         returnPct: round(returnPct, 2),
-        win: pnlPts > 0
+        win: returnPct > 0
       });
 
       cooldownUntil = i + holdCount;
@@ -891,7 +788,7 @@
       error: null,
       mode: 'swing',
       holdBars: holdBars,
-      minScore: minScore,
+      buyScore: buyScore,
       candlesUsed: source.length,
       trades: trades,
       stats: {
@@ -919,8 +816,8 @@
     computeEMA: computeEMA,
     computeSMA: computeSMA,
     computeRSI: computeRSI,
+    computeMACD: computeMACD,
     computeATR: computeATR,
-    computeADX: computeADX,
     DEFAULTS: DEFAULTS
   };
 

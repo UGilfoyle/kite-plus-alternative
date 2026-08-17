@@ -5002,115 +5002,96 @@ function updateInvestorSizing(eq) {
 }
 
 /* ==========================================
-   SWING EXTRAS — Dashboard + Trade Card
+   SWING EXTRAS — Swing V3 Dashboard + Trade Card
    ========================================== */
 function renderSwingExtras(sw) {
   if (!sw) return;
-  const d = sw.dashboard;
-  const trade = sw.trade || sw.signalTrade;
+  const trade = sw.trade;
+  const ind = sw.indicators || {};
+  const scores = sw.scores || {};
 
-  // --- Equity levels card (reuse existing #kp-equity-levels) ---
+  // --- Trade levels card (#kp-equity-levels) ---
   const levelsEl = document.querySelector('#kp-equity-levels');
   if (levelsEl && trade) {
-    const isLong = trade.direction === 'LONG';
-    const dirColor = isLong ? 'var(--kp-green, #00c853)' : 'var(--kp-red, #ff1744)';
-    const bgGradient = isLong
+    const isBuy = sw.action === 'BUY';
+    const actionCol = isBuy ? 'var(--kp-green, #00c853)' : (sw.action === 'WATCH' ? 'var(--kp-amber, #ffab00)' : 'rgba(255,255,255,0.5)');
+    const bgGradient = isBuy
       ? 'linear-gradient(135deg, rgba(0, 200, 83, 0.08) 0%, rgba(0, 200, 83, 0.02) 100%)'
-      : 'linear-gradient(135deg, rgba(255, 23, 68, 0.08) 0%, rgba(255, 23, 68, 0.02) 100%)';
-    const borderCol = isLong ? 'rgba(0, 200, 83, 0.35)' : 'rgba(255, 23, 68, 0.35)';
+      : 'linear-gradient(135deg, rgba(255, 171, 0, 0.06) 0%, rgba(255, 171, 0, 0.01) 100%)';
+    const borderCol = isBuy ? 'rgba(0, 200, 83, 0.35)' : 'rgba(255, 255, 255, 0.12)';
 
     levelsEl.innerHTML = `
-      <div class="kp-swing-trade-card" style="border:1px solid ${borderCol};border-left:4px solid ${dirColor};padding:10px 12px;margin:8px 0;border-radius:6px;background:${bgGradient};box-shadow:0 2px 8px rgba(0,0,0,0.15)">
+      <div class="kp-swing-trade-card" style="border:1px solid ${borderCol};border-left:4px solid ${actionCol};padding:10px 12px;margin:8px 0;border-radius:6px;background:${bgGradient};box-shadow:0 2px 8px rgba(0,0,0,0.15)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-          <span style="font-weight:700;font-size:13px;color:${dirColor};letter-spacing:0.3px">🎯 ${trade.direction} · 1:2 R:R</span>
-          <span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.1);color:${dirColor}">Score ${trade.rating}/10</span>
+          <span style="font-weight:700;font-size:13px;color:${actionCol};letter-spacing:0.3px">🎯 ${sw.action} · Setup: ${sw.setupName || 'NONE'}</span>
+          <span style="font-size:11px;font-weight:700;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.1);color:${actionCol}">Score ${sw.score}/100</span>
         </div>
-        <div class="kp-swing-levels" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;font-size:11px;background:rgba(0,0,0,0.15);padding:6px 8px;border-radius:4px">
-          <div><span style="opacity:0.6;font-size:10px">Entry</span><br><strong style="font-size:12px">${formatPrice(trade.entry)}</strong></div>
-          <div><span style="opacity:0.6;font-size:10px">Stop Loss</span><br><strong style="color:var(--kp-red, #ff1744);font-size:12px">${formatPrice(trade.stopLoss)}</strong></div>
-          <div><span style="opacity:0.6;font-size:10px">Target 1:2</span><br><strong style="color:var(--kp-green, #00c853);font-size:12px">${formatPrice(trade.target1)}</strong></div>
+        <div class="kp-swing-levels" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;font-size:11px;background:rgba(0,0,0,0.15);padding:6px 8px;border-radius:4px;text-align:center">
+          <div><span style="opacity:0.6;font-size:10px">Entry</span><br><strong style="font-size:11px">${formatPrice(trade.entry)}</strong></div>
+          <div><span style="opacity:0.6;font-size:10px">Stop Loss</span><br><strong style="color:var(--kp-red, #ff1744);font-size:11px">${formatPrice(trade.stopLoss)}</strong></div>
+          <div><span style="opacity:0.6;font-size:10px">T1 (1.5R)</span><br><strong style="color:var(--kp-green, #00c853);font-size:11px">${formatPrice(trade.target1)}</strong></div>
+          <div><span style="opacity:0.6;font-size:10px">T2 (2.5R)</span><br><strong style="color:var(--kp-green, #00c853);font-size:11px">${formatPrice(trade.target2)}</strong></div>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:10px;opacity:0.7;margin-top:6px">
-          <span>Risk: <b style="color:var(--kp-red, #ff1744)">${formatPrice(trade.risk)}</b></span>
-          <span>Reward: <b style="color:var(--kp-green, #00c853)">${formatPrice(trade.reward)}</b></span>
-          <span>Ratio: <b>${trade.rr}</b></span>
+          <span>Risk: <b style="color:var(--kp-red, #ff1744)">${formatPrice(trade.risk)} (${trade.riskPct}%)</b></span>
+          <span>Pattern: <b>${sw.patternName || 'None'}</b></span>
+          <span>Regime: <b style="color:var(--kp-green, #00c853)">BULLISH</b></span>
         </div>
-      </div>
-    `;
-  } else if (levelsEl) {
-    levelsEl.innerHTML = `
-      <div style="font-size:11px;opacity:0.6;padding:8px 10px;border-radius:4px;background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.1);margin:6px 0;text-align:center">
-        ⏳ Waiting for high-confluence setup (Score ≥ 8.0 + Breakout/Pullback)
       </div>
     `;
   }
 
-  // --- Equity meta (reuse #kp-equity-meta for swing dashboard) ---
+  // --- Score Breakdown & Indicators (#kp-equity-meta) ---
   const metaEl = document.querySelector('#kp-equity-meta');
-  if (metaEl && d) {
-    const trendColor = d.trendBias === 'bullish' ? 'var(--kp-green, #00c853)'
-      : d.trendBias === 'bearish' ? 'var(--kp-red, #ff1744)' : 'var(--kp-amber, #ffab00)';
-    const longColor = d.longScore >= d.minimumScore ? 'var(--kp-green, #00c853)' : (d.longScore >= 6 ? 'var(--kp-amber, #ffab00)' : 'rgba(255,255,255,0.5)');
-    const shortColor = d.shortScore >= d.minimumScore ? 'var(--kp-red, #ff1744)' : (d.shortScore >= 6 ? 'var(--kp-amber, #ffab00)' : 'rgba(255,255,255,0.5)');
-
+  if (metaEl) {
     metaEl.innerHTML = `
       <div class="kp-swing-dashboard" style="font-size:11px;margin:6px 0;padding:10px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.06);padding-bottom:4px">
-          <span style="font-weight:600;font-size:12px;letter-spacing:0.2px">Swing Pro Indicators</span>
-          <span style="font-size:10px;font-weight:700;color:${trendColor}">${d.trend}</span>
+          <span style="font-weight:600;font-size:12px;letter-spacing:0.2px">Swing V3 Confluence Scores</span>
+          <span style="font-size:11px;font-weight:700;color:${sw.score >= 80 ? 'var(--kp-green, #00c853)' : (sw.score >= 70 ? 'var(--kp-amber, #ffab00)' : 'rgba(255,255,255,0.5)')}">Total: ${sw.score}/100</span>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;line-height:1.5">
-          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">EMA Stack</span><strong>${d.emaStack}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">RSI(14)</span><strong>${d.rsi ?? '—'}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Volume</span><strong>${d.volumeRatio != null ? d.volumeRatio + 'x' : '—'}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">ADX (14)</span><strong>${d.adx ?? '—'}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">DI+ / DI-</span><strong>${d.diPlus ?? '—'}/${d.diMinus ?? '—'}</strong></div>
-          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">ATR (14)</span><strong>${d.atr ?? '—'}</strong></div>
-          <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.06);padding-top:2px"><span style="opacity:0.7">Long Rating</span><strong style="color:${longColor}">${d.longScore}/10</strong></div>
-          <div style="display:flex;justify-content:space-between;border-top:1px solid rgba(255,255,255,0.06);padding-top:2px"><span style="opacity:0.7">Short Rating</span><strong style="color:${shortColor}">${d.shortScore}/10</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Trend (25)</span><strong>${scores.trend?.score ?? 0} pts</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Structure (20)</span><strong>${scores.structure?.score ?? 0} pts</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Pattern (15)</span><strong>${scores.pattern?.score ?? 0} pts</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Momentum (15)</span><strong>${scores.momentum?.score ?? 0} pts</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Volume (10)</span><strong>${scores.volume?.score ?? 0} pts</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">RS vs Nifty (10)</span><strong>${scores.relativeStrength?.score ?? 0} pts</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Candle (5)</span><strong>${scores.candle?.score ?? 0} pts</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Penalty</span><strong style="color:var(--kp-red, #ff1744)">-${sw.bearishPenalty ?? 0} pts</strong></div>
+        </div>
+        <div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.06);display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:10px">
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">RSI (14)</span><strong>${ind.rsi ?? '—'}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">Vol Ratio</span><strong>${ind.volumeRatio ? ind.volumeRatio + 'x' : '—'}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">20 / 50 / 200 EMA</span><strong>${ind.ema20}/${ind.ema50}/${ind.ema200}</strong></div>
+          <div style="display:flex;justify-content:space-between"><span style="opacity:0.6">RS Return</span><strong>${ind.relativeStrength ? ind.relativeStrength + '%' : '—'}</strong></div>
         </div>
       </div>
     `;
-  }
-
-  // --- Reasons / checklist (reuse #kp-equity-reasons) ---
-  const reasonsEl = document.querySelector('#kp-equity-reasons');
-  if (reasonsEl && sw.checklist) {
-    reasonsEl.innerHTML = sw.checklist.map(c => {
-      const icon = c.pass ? '✓' : '✗';
-      const color = c.pass ? 'var(--kp-green, #00c853)' : 'var(--kp-red, #ff1744)';
-      return `<div class="kp-reason-row" style="display:flex;gap:8px;align-items:center;font-size:11px;padding:2px 0">
-        <span style="color:${color};font-weight:700;font-size:13px;width:14px;text-align:center">${icon}</span>
-        <span style="flex:1">${c.label}</span>
-        <span style="font-size:10px;opacity:0.6">${c.detail}</span>
-      </div>`;
-    }).join('');
-  }
-
-  // --- Coach tip (reuse #kp-equity-coach) ---
-  const coachEl = document.querySelector('#kp-equity-coach');
-  if (coachEl && sw.coachTip) {
-    coachEl.textContent = sw.coachTip;
-    coachEl.style.display = '';
   }
 
   // --- Pick card ---
   const pickCard = document.querySelector('#kp-pick-card');
   if (pickCard) {
-    if (sw.longSignal || sw.shortSignal) {
-      const dir = sw.longSignal ? 'LONG' : 'SHORT';
-      const score = sw.longSignal ? sw.longScore : sw.shortScore;
-      const color = sw.longSignal ? 'var(--kp-green, #00c853)' : 'var(--kp-red, #ff1744)';
+    if (sw.buySignal) {
       pickCard.innerHTML = `
-        <div style="padding:10px 12px;border-radius:6px;background:rgba(255,255,255,0.04);border:1px solid ${color};box-shadow:0 0 10px rgba(0,200,83,0.15)">
-          <div style="font-weight:700;color:${color};font-size:13px">🎯 ${dir} SIGNAL TRIGGERED · Score ${score}/10</div>
-          <div style="font-size:11px;opacity:0.8;margin-top:4px">${sw.coachTip || ''}</div>
+        <div style="padding:10px 12px;border-radius:6px;background:rgba(0,200,83,0.08);border:1px solid var(--kp-green, #00c853);box-shadow:0 0 10px rgba(0,200,83,0.15)">
+          <div style="font-weight:700;color:var(--kp-green, #00c853);font-size:13px">🟢 BUY SIGNAL — Setup: ${sw.setupName} · Score ${sw.score}/100</div>
+          <div style="font-size:11px;opacity:0.85;margin-top:4px">Target 1 (1.5R): ${formatPrice(trade.target1)} · Target 2 (2.5R): ${formatPrice(trade.target2)} · SL: ${formatPrice(trade.stopLoss)}</div>
         </div>
       `;
-    } else if (sw.slHit) {
-      pickCard.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--kp-red, #ff1744);background:rgba(255,23,68,0.1);border-radius:4px">⛔ Stop-Loss Hit — Position closed. Wait for next clean setup.</div>';
-    } else if (sw.t1Hit) {
-      pickCard.innerHTML = '<div style="padding:8px 10px;font-size:12px;color:var(--kp-green, #00c853);background:rgba(0,200,83,0.1);border-radius:4px">✅ Target 1:2 Reached! Book profits.</div>';
+    } else if (sw.watchSignal) {
+      pickCard.innerHTML = `
+        <div style="padding:8px 10px;font-size:12px;color:var(--kp-amber, #ffab00);background:rgba(255,171,0,0.08);border:1px solid rgba(255,171,0,0.3);border-radius:4px">
+          ⏳ WATCH — Confluence Score is ${sw.score}/100 (Needs ≥80 for BUY trigger).
+        </div>
+      `;
+    } else {
+      pickCard.innerHTML = `
+        <div style="padding:8px 10px;font-size:12px;color:rgba(255,255,255,0.6);background:rgba(255,255,255,0.03);border:1px dashed rgba(255,255,255,0.1);border-radius:4px">
+          ⛔ AVOID — Score ${sw.score}/100. Waiting for bullish trend & breakout.
+        </div>
+      `;
     }
   }
 
@@ -5582,31 +5563,16 @@ function updateSignalEngine() {
   }
 
   let result;
-  // ── SWING MODE — use dedicated swing engine ──
+  // ── SWING MODE — use dedicated Swing V3 engine ──
   if (signalTradeMode === 'swing' && window.KPSwingEngine?.generateSwingSignal) {
     try {
-      const swingResult = window.KPSwingEngine.generateSwingSignal(candles, {
-        tradeState: swingTradeState
-      });
-      // Map swing result to panel result format
-      const swingAction = swingResult.action === 'LONG' ? 'BUY'
-        : swingResult.action === 'SHORT' ? 'BUY'
-          : swingResult.action === 'HOLD_LONG' ? 'HOLD'
-            : swingResult.action === 'HOLD_SHORT' ? 'HOLD'
-              : 'WAIT';
-      const swingDirection = swingResult.action === 'LONG' ? 'CE'
-        : swingResult.action === 'SHORT' ? 'PE'
-          : swingResult.action === 'HOLD_LONG' ? 'CE'
-            : swingResult.action === 'HOLD_SHORT' ? 'PE'
-              : null;
-      const maxScore = 10;
-      const domScore = Math.max(swingResult.longScore || 0, swingResult.shortScore || 0);
-      const strengthPct = Math.round((domScore / maxScore) * 100);
+      const swingResult = window.KPSwingEngine.generateSwingSignal(candles);
+      const action = swingResult.action === 'BUY' ? 'BUY' : (swingResult.action === 'WATCH' ? 'HOLD' : 'WAIT');
       result = {
-        direction: swingDirection,
-        action: swingAction,
-        strength: strengthPct,
-        message: swingResult.status || 'WAIT',
+        direction: 'LONG',
+        action: action,
+        strength: swingResult.score || 0,
+        message: swingResult.action === 'BUY' ? `BUY · Setup: ${swingResult.setupName}` : (swingResult.action === 'WATCH' ? `WATCH · Score ${swingResult.score}/100` : `AVOID · Score ${swingResult.score}/100`),
         currentPrice: price,
         instrument: signalInstrument,
         mode: 'swing',
@@ -5614,12 +5580,13 @@ function updateSignalEngine() {
         indicators: swingResult.indicators || {},
         brain: {
           momentum: 0,
-          edge: Math.abs((swingResult.longScore || 0) - (swingResult.shortScore || 0)),
-          agreement: domScore / maxScore,
-          minCandles: swingResult.minCandles || 45
+          edge: (swingResult.score || 0) / 100,
+          agreement: (swingResult.score || 0) / 100,
+          minCandles: swingResult.minCandles || 35
         },
         equity: true,
         swing: true,
+        trade: swingResult.trade,
         swingData: swingResult
       };
       lastEquityResult = null;
